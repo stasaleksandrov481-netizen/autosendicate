@@ -1,6 +1,6 @@
-# AutoSyndicate Carbon v12
+# AutoSyndicate Carbon v12.2
 
-AutoSyndicate Carbon v12 is a Telegram Mini App built for Vercel on Next.js App Router + TypeScript. v12 focuses on reliable server synchronization: Telegram identity, friends, clans, chat, market, cases, referrals, bank operations and legacy PvP now use the same Vercel/HttpOnly-session boundary instead of depending on a browser Supabase session.
+AutoSyndicate Carbon v12.2 is a Telegram Mini App built for Vercel on Next.js App Router + TypeScript. v12 focuses on reliable server synchronization: Telegram identity, friends, clans, chat, market, cases, referrals, bank operations and legacy PvP now use the same Vercel/HttpOnly-session boundary instead of depending on a browser Supabase session.
 
 ## v12 synchronization fixes
 
@@ -43,21 +43,21 @@ AutoSyndicate Carbon v12 is a Telegram Mini App built for Vercel on Next.js App 
 - Telegram Mini Apps + Telegram Bot API webhooks
 - Vercel Node.js Functions
 
-## Database migrations
+## Database migration — use one file
 
-For a fresh database apply in this order:
+For v12.2 do **not** manually guess which historical migration your database already has. Run this single file in Supabase SQL Editor:
 
-1. `supabase/schema_v8.sql`
-2. `supabase/schema_v9.sql`
-3. `supabase/schema_v10.sql`
-4. `supabase/schema_v11.sql`
-5. `supabase/schema_v12.sql`
+```text
+supabase/schema_v12_2_FULL.sql
+```
 
-If v11 is already deployed, run only `supabase/schema_v12.sql`.
+It contains v8 → v12 in the correct order, repairs missing referral/auth/social objects, validates the final schema and is wrapped in one transaction. It is designed for both an old partially-migrated database and a fresh project.
 
-**v12 SQL is required for the new server chat/bank/PvP/referral bridges.** If the code is deployed without the migration, `/api/sync/status` reports an old schema and the profile synchronization card will tell you that v12 migration is required.
+The older `schema_v8.sql` … `schema_v12.sql` files remain in the repository for history/debugging, but normal deployment should use the consolidated installer.
 
-See `MIGRATION_V12.md`.
+After it succeeds, `game_settings_v11` contains `server.schema_version = 12` and `server.schema_patch = "12.2"`.
+
+See `MIGRATION_V12.md` and `FIX_SERVER_SYNC.md`.
 
 ## Environment
 
@@ -131,3 +131,8 @@ Browser Supabase Auth may still be created to accelerate realtime UI. Its failur
 ## Important remaining security debt
 
 The v12 synchronization layer is substantially safer, but the old compatibility runtime still keeps parts of the SYND wallet/inventory/game progression in `localStorage`. Do not treat the current economy as tamper-proof for valuable competitive rewards. The next architectural step is a server-authoritative wallet/inventory/vehicle ledger and server-calculated rewards. See `SECURITY.md`.
+
+
+### v12.2 session/bootstrap repair
+
+v12.2 fixes a misleading failure mode where database/config errors from `/api/auth/telegram` were returned as HTTP 401 and the client showed “Telegram session unavailable”. Infrastructure failures now have separate error codes, the profile card shows the actual corrective action, and `schema_v12_2_FULL.sql` removes the historical migration-order dependency.
