@@ -18,6 +18,10 @@ declare global {
         };
         ready?: () => void;
         expand?: () => void;
+        viewportHeight?: number;
+        viewportStableHeight?: number;
+        onEvent?: (event: string, cb: () => void) => void;
+        offEvent?: (event: string, cb: () => void) => void;
         HapticFeedback?: {
           impactOccurred?: (style: string) => void;
           notificationOccurred?: (type: string) => void;

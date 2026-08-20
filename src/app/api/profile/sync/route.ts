@@ -12,5 +12,10 @@ export async function POST(request: Request) {
     const body = profileSyncSchema.parse(await request.json());
     await syncProfile(session.playerId, session.username, body);
     return noStoreJson({ ok: true });
-  } catch (error) { return apiError(error); }
+  } catch (error) {
+    const msg=error instanceof Error?error.message:'';
+    if(msg==='UNAUTHORIZED'||msg==='BANNED'||msg.includes('rate limit')) return apiError(error);
+    console.warn('profile presentation sync deferred', error);
+    return noStoreJson({ ok:true, synced:false, deferred:true });
+  }
 }

@@ -16,7 +16,7 @@ export async function ensureTelegramPrincipal(user: VerifiedTelegramUser): Promi
 
   const { data: existingProfile, error: profileError } = await supabase
     .from('player_profiles')
-    .select('id,owner_uid')
+    .select('id,owner_uid,balance,owned_cars,races,total_earned,active_car_id')
     .eq('id', playerId)
     .maybeSingle();
   if (profileError) throw profileError;
@@ -55,6 +55,14 @@ export async function ensureTelegramPrincipal(user: VerifiedTelegramUser): Promi
   if (!ownerUid) throw new Error('Supabase principal owner UID missing');
 
   const stableOwnerUid = ownerUid;
+  const isFreshProfile = !existingProfile;
+  const needsStarterRepair = Boolean(existingProfile && (!Array.isArray(existingProfile.owned_cars) || existingProfile.owned_cars.length === 0) && Number(existingProfile.races ?? 0) === 0 && Number(existingProfile.total_earned ?? 0) === 0);
+  const starterPatch = isFreshProfile || needsStarterRepair ? {
+    balance: Math.max(1500, Number(existingProfile?.balance ?? 0)),
+    owned_cars: [1],
+    active_car_id: 1
+  } : {};
+
   const { error: upsertProfileError } = await supabase.from('player_profiles').upsert(
     {
       id: playerId,
@@ -62,7 +70,8 @@ export async function ensureTelegramPrincipal(user: VerifiedTelegramUser): Promi
       name: user.first_name,
       photo_url: user.photo_url ?? null,
       telegram_username: user.username ?? null,
-      last_seen: new Date().toISOString()
+      last_seen: new Date().toISOString(),
+      ...starterPatch
     },
     { onConflict: 'id' }
   );

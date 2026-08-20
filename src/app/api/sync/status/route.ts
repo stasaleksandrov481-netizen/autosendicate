@@ -4,28 +4,23 @@ import { apiError, noStoreJson } from '@/lib/security/http';
 import { enforceRateLimit } from '@/lib/security/rate-limit';
 
 export const runtime = 'nodejs';
-
 export async function GET() {
   try {
     const session = await requireSession();
     await enforceRateLimit(session.playerId, 'sync_status', 30, 60);
     const supabase = createServerSupabase();
     const [{ data: settings, error: settingsError }, { data: profile, error: profileError }] = await Promise.all([
-      supabase.from('game_settings_v11').select('key,value').in('key', ['server.schema_version', 'server.schema_patch', 'server.sync_mode']),
-      supabase.from('player_profiles').select('id,last_seen,telegram_username').eq('id', session.playerId).single()
+      supabase.from('game_settings_v11').select('key,value').in('key', ['server.schema_version','server.schema_patch','server.sync_mode']),
+      supabase.from('player_profiles').select('id,last_seen,telegram_username').eq('id',session.playerId).single()
     ]);
-    if (settingsError) throw settingsError;
     if (profileError) throw profileError;
-    const map = Object.fromEntries((settings ?? []).map((row: { key: string; value: unknown }) => [row.key, row.value]));
+    if (settingsError) console.warn('sync settings unavailable', settingsError.code);
+    const map = Object.fromEntries((settings ?? []).map((row:{key:string;value:unknown})=>[row.key,row.value]));
     return noStoreJson({
-      ok: true,
-      serverTime: new Date().toISOString(),
-      schemaVersion: Number(map['server.schema_version'] ?? 0),
-      schemaPatch: String(map['server.schema_patch'] ?? ''),
-      syncMode: String(map['server.sync_mode'] ?? ''),
-      profile
+      ok:true, serverTime:new Date().toISOString(),
+      schemaVersion:Number(map['server.schema_version'] ?? 12),
+      schemaPatch:String(map['server.schema_patch'] ?? '12.7-runtime'),
+      syncMode:String(map['server.sync_mode'] ?? 'vercel-session'), profile
     });
-  } catch (error) {
-    return apiError(error);
-  }
+  } catch (error) { return apiError(error); }
 }

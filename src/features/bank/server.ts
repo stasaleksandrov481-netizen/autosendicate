@@ -19,7 +19,7 @@ export async function getBankHistory(playerId: string) {
 export async function applyBankAction(playerId: string, action: BankAction) {
   const supabase = createServerSupabase();
   if (action.action === 'send') {
-    const { data, error } = await supabase.rpc('autosyndicate_server_bank_send_v12', {
+    const { data, error } = await supabase.rpc('autosyndicate_server_bank_send_v12_7', {
       p_player_id: playerId,
       p_receiver_id: action.receiverId,
       p_amount: action.amount
@@ -27,8 +27,12 @@ export async function applyBankAction(playerId: string, action: BankAction) {
     if (error) throw error;
     return { transfer: data };
   }
-  const { data, error } = await supabase.rpc('autosyndicate_server_bank_claim_v12', { p_player_id: playerId });
-  if (error) throw error;
+  const { data, error } = await supabase.rpc('autosyndicate_server_bank_claim_v12_7', { p_player_id: playerId });
+  if (error) {
+    const code=String((error as any)?.code||'');
+    if (['42883','PGRST202','PGRST204','PGRST205'].includes(code)) return { claimed: [], amount: 0, available: false };
+    throw error;
+  }
   const rows = Array.isArray(data) ? data : [];
   return {
     claimed: rows,

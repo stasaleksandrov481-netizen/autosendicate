@@ -8,7 +8,7 @@ import { DuelRoomClient } from '@/components/duels/DuelRoomClient';
 
 declare global {
   interface Window {
-    __AUTOSYNDICATE_CONTENT__?: { cars?: unknown[]; opponents?: unknown[]; settings?: Record<string, unknown> };
+    __AUTOSYNDICATE_CONTENT__?: { cars?: unknown[]; opponents?: unknown[]; settings?: Record<string, unknown>; player?: unknown };
   }
 }
 
@@ -21,6 +21,15 @@ export function GameClient() {
     if (started.current) return;
     started.current = true;
     const stopPreloader = startPreloader();
+
+    const syncViewport = () => {
+      const tgHeight = Number(window.Telegram?.WebApp?.viewportStableHeight || window.Telegram?.WebApp?.viewportHeight || 0);
+      const height = Math.max(320, Math.round(tgHeight || window.innerHeight || document.documentElement.clientHeight || 720));
+      document.documentElement.style.setProperty('--as-app-height', `${height}px`);
+    };
+    syncViewport();
+    window.addEventListener('resize', syncViewport, { passive: true });
+    window.Telegram?.WebApp?.onEvent?.('viewportChanged', syncViewport);
 
     void (async () => {
       try { await bootstrapSecureSession(); } catch (error) { if (error instanceof Error && error.message === 'PLAYER_BANNED') { setBlocked(true); stopPreloader(); return; } console.warn('secure Telegram session unavailable', error); }
@@ -36,7 +45,11 @@ export function GameClient() {
       await import('@/legacy/runtime');
     })();
 
-    return () => stopPreloader();
+    return () => {
+      stopPreloader();
+      window.removeEventListener('resize', syncViewport);
+      window.Telegram?.WebApp?.offEvent?.('viewportChanged', syncViewport);
+    };
   }, []);
 
   return <>

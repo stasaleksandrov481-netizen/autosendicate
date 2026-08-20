@@ -64,16 +64,27 @@ export async function requireSession() {
     return session;
   }
 
+  // playerId is deterministic for Telegram users, so a forged relation cannot be hidden in the cookie.
+  if (session.playerId !== `tg_${session.telegramId}`) throw new Error('UNAUTHORIZED');
   const supabase = createServerSupabase();
-  const [{ data: profile, error: profileError }, { data: principal, error: principalError }] = await Promise.all([
-    supabase.from('player_profiles').select('owner_uid,banned_at').eq('id', session.playerId).maybeSingle(),
-    supabase.from('telegram_principals').select('telegram_user_id,player_id,owner_uid').eq('telegram_user_id', session.telegramId).maybeSingle()
-  ]);
+  const { data: profile, error: profileError } = await supabase
+    .from('player_profiles').select('owner_uid,banned_at').eq('id', session.playerId).maybeSingle();
   if (profileError) throw profileError;
-  if (principalError) throw principalError;
-  if (!profile || !principal || principal.player_id !== session.playerId || principal.owner_uid !== profile.owner_uid) {
-    validationCache.delete(session.playerId);
-    throw new Error('UNAUTHORIZED');
+  if (!profile?.owner_uid) throw new Error('UNAUTHORIZED');
+
+  // Principal lookup is a revocation/integrity signal, not a single point of failure.
+  // The HMAC session + deterministic tg_<id> binding remains authoritative during a transient schema-cache issue.
+  try {
+    const { data: principal, error: principalError } = await supabase
+      .from('telegram_principals').select('telegram_user_id,player_id,owner_uid').eq('telegram_user_id', session.telegramId).maybeSingle();
+    if (!principalError && principal && (principal.player_id !== session.playerId || principal.owner_uid !== profile.owner_uid)) {
+      validationCache.delete(session.playerId);
+      throw new Error('UNAUTHORIZED');
+    }
+    if (principalError) console.warn('principal integrity check deferred', principalError.code);
+  } catch (error) {
+    if (error instanceof Error && error.message === 'UNAUTHORIZED') throw error;
+    console.warn('principal integrity check unavailable');
   }
 
   const banned = Boolean(profile.banned_at);

@@ -55,7 +55,7 @@ export const GAME_SHELL = `
   <!-- ДУЭЛЬ: выбор соперника -->
   <div id="screen-duel-select" class="screen duel-screen-v11">
     <div class="duel-v11-heading">
-      <div><span>КАРБОНОВАЯ ЛИГА</span><h2>Дуэльная сетка</h2><p>Подбери соперника под свою сборку и забери его позицию в уличной иерархии.</p></div>
+      <div><span>КАРБОНОВАЯ ЛИГА</span><h2>Уличные дуэли</h2><p>Выбери соперника и выходи на линию.</p></div>
       <div class="duel-v11-live"><i></i><b>В СЕТИ</b><span id="duel-online-label">поиск соперников</span></div>
     </div>
     <div class="subtabs duel-v11-tabs">
@@ -87,7 +87,7 @@ export const GAME_SHELL = `
 
   <!-- ГОНКА -->
   <div id="screen-race" class="screen">
-    <div id="race-content" style="width:100%;max-width:480px;"></div>
+    <div id="race-content" style="width:100%;max-width:620px;"></div>
   </div>
 
   <!-- БАНК -->

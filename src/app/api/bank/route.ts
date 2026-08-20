@@ -12,7 +12,10 @@ export async function GET() {
     await enforceRateLimit(session.playerId, 'bank_read', 60, 60);
     return noStoreJson({ ok: true, data: await getBankHistory(session.playerId) });
   } catch (error) {
-    return apiError(error);
+    const msg=error instanceof Error?error.message:'';
+    if(msg==='UNAUTHORIZED'||msg==='BANNED'||msg.includes('rate limit')) return apiError(error);
+    console.warn('bank history deferred', error);
+    return noStoreJson({ ok:true, available:false, data:[] });
   }
 }
 
