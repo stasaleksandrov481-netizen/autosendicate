@@ -15,12 +15,16 @@ const sessionSchema = z.object({
 });
 export type GameSession = z.infer<typeof sessionSchema>;
 
+type ValidationCache = { telegramId: number; checkedAt: number; banned: boolean };
+const validationCache = new Map<string, ValidationCache>();
+const VALIDATION_TTL_MS = 20_000;
+
 function signPayload(payload: string, secret: string) {
   return createHmac('sha256', secret).update(payload).digest('base64url');
 }
 
 export function encodeSession(session: GameSession) {
-  const secret = getServerEnv().SESSION_SECRET;
+  const secret = getServerEnv().SESSION_SECRET.trim();
   const payload = Buffer.from(JSON.stringify(session)).toString('base64url');
   return `${payload}.${signPayload(payload, secret)}`;
 }
@@ -29,7 +33,7 @@ export function decodeSession(value: string | undefined | null): GameSession | n
   if (!value) return null;
   const [payload, signature] = value.split('.');
   if (!payload || !signature) return null;
-  const expected = signPayload(payload, getServerEnv().SESSION_SECRET);
+  const expected = signPayload(payload, getServerEnv().SESSION_SECRET.trim());
   const a = Buffer.from(signature);
   const b = Buffer.from(expected);
   if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
@@ -44,9 +48,22 @@ export async function getSession() {
   return decodeSession(store.get(SESSION_COOKIE)?.value);
 }
 
+export function invalidateSessionValidation(playerId?: string) {
+  if (playerId) validationCache.delete(playerId);
+  else validationCache.clear();
+}
+
 export async function requireSession() {
   const session = await getSession();
   if (!session) throw new Error('UNAUTHORIZED');
+
+  const cached = validationCache.get(session.playerId);
+  const now = Date.now();
+  if (cached && cached.telegramId === session.telegramId && now - cached.checkedAt < VALIDATION_TTL_MS) {
+    if (cached.banned) throw new Error('BANNED');
+    return session;
+  }
+
   const supabase = createServerSupabase();
   const [{ data: profile, error: profileError }, { data: principal, error: principalError }] = await Promise.all([
     supabase.from('player_profiles').select('owner_uid,banned_at').eq('id', session.playerId).maybeSingle(),
@@ -55,10 +72,12 @@ export async function requireSession() {
   if (profileError) throw profileError;
   if (principalError) throw principalError;
   if (!profile || !principal || principal.player_id !== session.playerId || principal.owner_uid !== profile.owner_uid) {
-    // Returning an auth failure intentionally triggers the Mini App's one-shot Telegram re-auth,
-    // which repairs stale principal/profile bindings without leaving social screens half-online.
+    validationCache.delete(session.playerId);
     throw new Error('UNAUTHORIZED');
   }
-  if (profile.banned_at) throw new Error('BANNED');
+
+  const banned = Boolean(profile.banned_at);
+  validationCache.set(session.playerId, { telegramId: session.telegramId, checkedAt: now, banned });
+  if (banned) throw new Error('BANNED');
   return session;
 }

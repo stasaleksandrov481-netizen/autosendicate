@@ -4,7 +4,8 @@ import './globals.css';
 
 export const metadata: Metadata = {
   title: 'AutoSyndicate: Carbon District',
-  description: 'Telegram racing game — Carbon District'
+  description: 'Telegram racing game — Carbon District',
+  icons: { icon: '/favicon.ico', shortcut: '/favicon.ico', apple: '/favicon.ico' }
 };
 
 export const viewport: Viewport = {

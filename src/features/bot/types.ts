@@ -9,4 +9,4 @@ export interface TgMessage {
   reply_to_message?: TgMessage;
 }
 export interface TgCallbackQuery { id: string; from: TgUser; message?: TgMessage; data?: string; }
-export interface TgUpdate { update_id: number; message?: TgMessage; callback_query?: TgCallbackQuery; }
+export interface TgUpdate { update_id: number; message?: TgMessage; edited_message?: TgMessage; callback_query?: TgCallbackQuery; }

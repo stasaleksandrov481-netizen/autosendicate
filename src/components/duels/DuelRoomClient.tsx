@@ -79,8 +79,8 @@ export function DuelRoomClient({ code, onClose }: { code: string; onClose: () =>
   useEffect(() => {
     let stopped = false;
     void load().catch((reason: unknown) => !stopped && setError(reason instanceof Error ? reason.message : 'Ошибка комнаты'));
-    const poll = window.setInterval(() => void load().catch(() => {}), 1400);
-    const tick = window.setInterval(() => setNow(Date.now()), 200);
+    const poll = window.setInterval(() => { if (document.visibilityState === 'visible') void load().catch(() => {}); }, 1800);
+    const tick = window.setInterval(() => setNow(Date.now()), 250);
     return () => { stopped = true; clearInterval(poll); clearInterval(tick); };
   }, [code]);
 
@@ -134,7 +134,7 @@ export function DuelRoomClient({ code, onClose }: { code: string; onClose: () =>
   return <div className="duel-room-overlay">
     <div className="duel-room-shell">
       <div className="duel-room-head">
-        <div><span>PRIVATE DUEL · {code.slice(0, 6).toUpperCase()}</span><b>{statusText}</b></div>
+        <div><span>ПРИВАТНАЯ ДУЭЛЬ · {code.slice(0, 6).toUpperCase()}</span><b>{statusText}</b></div>
         <button onClick={onClose} aria-label="Закрыть">×</button>
       </div>
 
@@ -162,7 +162,7 @@ export function DuelRoomClient({ code, onClose }: { code: string; onClose: () =>
           <section className="duel-opponent-lock">
             <div className="duel-room-label">Выбор соперника</div>
             <div className="duel-locked-car">
-              <div className="duel-lock-icon">{otherReady ? 'READY' : otherCarId ? 'LOCKED' : 'WAIT'}</div>
+              <div className="duel-lock-icon">{otherReady ? 'ГОТОВ' : otherCarId ? 'ВЫБРАНО' : 'ЖДЁМ'}</div>
               <b>{otherCar?.name || (otherCarId ? `CAR #${otherCarId}` : 'Машина не выбрана')}</b>
               <small>{otherCar ? `${otherCar.power} л.с. · ${otherCar.tier}` : 'Обновится автоматически'}</small>
             </div>
@@ -180,7 +180,7 @@ export function DuelRoomClient({ code, onClose }: { code: string; onClose: () =>
         </div>}
 
         {finished && <div className={`duel-finish-card ${winnerLabel === 'ПОБЕДА' ? 'win' : winnerLabel === 'ПОРАЖЕНИЕ' ? 'loss' : ''}`}>
-          <span>DUEL COMPLETE</span><b>{winnerLabel}</b>
+          <span>ДУЭЛЬ ЗАВЕРШЕНА</span><b>{winnerLabel}</b>
           <div className="duel-result-grid"><div><small>Вы</small><strong>{myResult ? `${(myResult.elapsedMs/1000).toFixed(3)} c` : 'НЕ ФИНИШИРОВАЛ'}</strong><em>{myResult ? `${Math.round(myResult.topSpeedKmh)} км/ч` : '0'}</em></div><div><small>Соперник</small><strong>{otherResult ? `${(otherResult.elapsedMs/1000).toFixed(3)} c` : 'НЕ ФИНИШИРОВАЛ'}</strong><em>{otherResult ? `${Math.round(otherResult.topSpeedKmh)} км/ч` : '0'}</em></div></div>
           <button onClick={onClose}>Вернуться в игру</button>
         </div>}

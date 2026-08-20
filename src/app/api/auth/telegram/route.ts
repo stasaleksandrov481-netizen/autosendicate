@@ -7,6 +7,7 @@ import { encodeSession, SESSION_COOKIE } from '@/lib/security/session';
 import { apiError, assertSameOrigin, noStoreJson } from '@/lib/security/http';
 import { enforceRateLimit } from '@/lib/security/rate-limit';
 import { createServerSupabase } from '@/lib/supabase/server';
+import { ensureTelegramWebhook } from '@/features/bot/telegram';
 
 export const runtime = 'nodejs';
 const bodySchema = z.object({ initData: z.string().min(1).max(16_000) });
@@ -55,6 +56,10 @@ export async function POST(request: NextRequest) {
       name: user.first_name,
       exp
     });
+
+    // Keep the Bot API webhook self-healing whenever a real Mini App session is verified.
+    // Failure here must never block game authentication.
+    try { await ensureTelegramWebhook(false); } catch (error) { console.warn('Telegram webhook ensure failed', error); }
 
     const response = NextResponse.json({
       ok: true,

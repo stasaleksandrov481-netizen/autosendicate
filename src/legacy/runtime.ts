@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { createClient } from '@supabase/supabase-js';
+import { createBrowserSupabase } from '@/lib/supabase/client';
 
 /* ===== migrated from state.js ===== */
 /* ==================== STATE / STORAGE 5.0 ==================== */
@@ -248,6 +248,23 @@ const carsDB = [
   { id:26, name:"Carbon Wraith", image:null, price:95000, power:1350, tier:"Mythic", cat:"myth", flavor:"Закрытая серия Carbon District. Экстремально лёгкая платформа, настроенная под максимальную скорость." },
   { id:27, name:"Project Zero", image:null, price:62000, power:1120, tier:"Mythic", cat:"myth", flavor:"Экспериментальная уличная сборка без серийных обозначений. Баланс тяги, массы и длинных передач." }
 ];
+
+/* ===== BALANCED ECONOMY v12.6 =====
+   Progression is intentionally paced for weeks: early cars are reachable,
+   high-end cars require career/ranked play instead of a one-day grind. */
+const ECONOMY_V12_6 = {
+  carPrices:{1:0,2:3600,3:8200,4:14500,5:19000,6:27500,7:34000,8:39000,9:52000,10:30000,11:45000,12:49000,13:68000,14:78000,15:85000,16:120000,17:150000,18:175000,19:205000,20:255000,21:330000,22:410000,23:470000,24:650000,25:900000,26:1350000,27:1100000},
+  casinoMax:()=>Math.max(50,Math.min(Number(state?.coins)||0,2500,100+(Number(state?.level)||1)*60)),
+  raceReward:(opp:any)=>{
+    const power=Math.max(100,Number(opp?.power)||200),lvl=Math.max(1,Number(opp?.unlockLevel)||1);
+    const base=Math.max(90,Math.round(power*.50+lvl*13));
+    return Math.round(base*(opp?.boss?1.35:1));
+  }
+};
+function applyEconomyCarPrices(list:any[]=carsDB){list.forEach((car:any)=>{const v=(ECONOMY_V12_6.carPrices as any)[Number(car.id)];if(Number.isFinite(v))car.price=v;});return list;}
+function economyRaceReward(opp:any){return ECONOMY_V12_6.raceReward(opp);}
+applyEconomyCarPrices(carsDB);
+
 const CAT_LABELS = { street:"Уличный", jdm:"JDM тюнер", muscle:"Масл-кар", sport:"Спорт", super:"Суперкар", hyper:"Гиперкар", legend:"Легенда", myth:"Миф подполья" };
 const CAT_COLORS = { street:['#94a3b8','#334155'], jdm:['#38bdf8','#0c4a6e'], muscle:['#fb923c','#7c2d12'], sport:['#a78bfa','#4c1d95'], super:['#fb7185','#4c0519'], hyper:['#fbbf24','#78350f'], legend:['#facc15','#713f12'], myth:['#c084fc','#1e1033'] };
 
@@ -324,9 +341,9 @@ function fuelCostFor(opp){ return opp.boss ? 26 : (opp.entryFee!==undefined ? 22
 
 /* ==================== JOBS ==================== */
 const jobsDB = [
-  { id:"wash", name:"Мойка тачек в гараже", desc:"Быстро, скучно, но надёжно", reward:90, xp:6, cooldown:25 },
-  { id:"delivery", name:"Доставка запчастей", desc:"Погонять по району без риска", reward:180, xp:12, cooldown:60 },
-  { id:"taxi", name:"Ночной таксист", desc:"Долгая смена, зато солидно платят", reward:340, xp:20, cooldown:150 }
+  { id:"wash", name:"Мойка тачек в гараже", desc:"Стабильный небольшой заработок", reward:60, xp:4, cooldown:90 },
+  { id:"delivery", name:"Доставка запчастей", desc:"Средняя смена с нормальной выплатой", reward:110, xp:7, cooldown:240 },
+  { id:"taxi", name:"Ночной таксист", desc:"Длинная смена с повышенной выплатой", reward:190, xp:11, cooldown:600 }
 ];
 
 /* ==================== ДПС (ПОЛИЦИЯ) ==================== */
@@ -400,12 +417,12 @@ function repairCar(carId){
 }
 
 /* ==================== XP / LEVEL ==================== */
-function xpNeeded(lvl){ return 80+lvl*45; }
+function xpNeeded(lvl){ return 160+lvl*110+lvl*lvl*18; }
 function addXP(n){
   state.xp+=n;
   let leveled=false;
   while(state.xp>=xpNeeded(state.level)){ state.xp-=xpNeeded(state.level); state.level++; leveled=true; }
-  if(leveled){ const bonus=state.level*50; awardMoney(bonus,'ПОВЫШЕНИЕ УРОВНЯ'); showToast('Новый уровень · LVL '+state.level); }
+  if(leveled){ const bonus=Math.min(1000,60+state.level*20); awardMoney(bonus,'ПОВЫШЕНИЕ УРОВНЯ'); showToast('Новый уровень · LVL '+state.level); }
   updateHeader();
 }
 
@@ -744,7 +761,9 @@ function renderCasinoHub(){
 
 function clampBet(input, min){
   let v = parseInt(input.value)||0;
+  const hardMax=ECONOMY_V12_6.casinoMax();
   if(v<min) v=min;
+  if(v>hardMax) v=hardMax;
   if(v>state.coins) v=state.coins;
   input.value=v;
   return v;
@@ -754,7 +773,7 @@ function clampBet(input, min){
 let bj = null;
 let rltSpinning=false,slotsSpinning=false,diceRolling=false;
 function bjAdjustBet(delta){ const i=document.getElementById('bj-bet-input'); i.value=(parseInt(i.value)||0)+delta; clampBet(i,10); }
-function bjMaxBet(){ document.getElementById('bj-bet-input').value=state.coins; clampBet(document.getElementById('bj-bet-input'),10); }
+function bjMaxBet(){ document.getElementById('bj-bet-input').value=ECONOMY_V12_6.casinoMax(); clampBet(document.getElementById('bj-bet-input'),10); }
 function bjNewDeck(){
   const suits=['S','H','D','C']; const ranks=['A','2','3','4','5','6','7','8','9','10','J','Q','K'];
   let d=[];
@@ -854,7 +873,7 @@ function bjEnd(result){
 const RLT_RED = [1,3,5,7,9,12,14,16,18,19,21,23,25,27,30,32,34,36];
 let rltSelection = null;
 function rltAdjustBet(delta){ const i=document.getElementById('rlt-bet-input'); i.value=(parseInt(i.value)||0)+delta; clampBet(i,10); }
-function rltMaxBet(){ document.getElementById('rlt-bet-input').value=state.coins; clampBet(document.getElementById('rlt-bet-input'),10); }
+function rltMaxBet(){ document.getElementById('rlt-bet-input').value=ECONOMY_V12_6.casinoMax(); clampBet(document.getElementById('rlt-bet-input'),10); }
 function rltInit(){
   const grid=document.getElementById('rlt-grid');
   let html='';
@@ -916,7 +935,7 @@ function rltSpin(){
 const SLOT_SYMBOLS = ['BOLT','DIAMOND','STAR','CROWN','BAR','777'];
 const SLOT_WEIGHTS = [30,26,20,13,8,3];
 function slotsAdjustBet(delta){ const i=document.getElementById('slots-bet-input'); i.value=(parseInt(i.value)||0)+delta; clampBet(i,10); }
-function slotsMaxBet(){ document.getElementById('slots-bet-input').value=state.coins; clampBet(document.getElementById('slots-bet-input'),10); }
+function slotsMaxBet(){ document.getElementById('slots-bet-input').value=ECONOMY_V12_6.casinoMax(); clampBet(document.getElementById('slots-bet-input'),10); }
 function weightedSymbol(){
   const total = SLOT_WEIGHTS.reduce((a,b)=>a+b,0);
   let r=Math.random()*total;
@@ -968,7 +987,7 @@ function diceUpdate(){
   document.getElementById('dice-mult').innerText = 'x'+mult;
 }
 function diceAdjustBet(delta){ const i=document.getElementById('dice-bet-input'); i.value=(parseInt(i.value)||0)+delta; clampBet(i,10); }
-function diceMaxBet(){ document.getElementById('dice-bet-input').value=state.coins; clampBet(document.getElementById('dice-bet-input'),10); }
+function diceMaxBet(){ document.getElementById('dice-bet-input').value=ECONOMY_V12_6.casinoMax(); clampBet(document.getElementById('dice-bet-input'),10); }
 function diceRoll(){
   if(diceRolling)return;
   const bet = clampBet(document.getElementById('dice-bet-input'),10);
@@ -1130,12 +1149,12 @@ const DISTRICTS=[
   {id:'silverton',name:'Сильвертон',unlockLevel:13,target:3000,next:6000,desc:'Финальный район синдиката: боссы, высокий HEAT и большие ставки.'}
 ];
 const CONTRACT_POOL=[
-  {id:'races3',event:'race',target:3,reward:320,name:'На линии',desc:'Заверши 3 уличных заезда.'},
-  {id:'wins2',event:'win',target:2,reward:450,name:'Без права на ошибку',desc:'Выиграй 2 заезда.'},
-  {id:'shift4',event:'perfectShift',target:4,reward:390,name:'Идеальная КПП',desc:'Сделай 4 идеальных переключения.'},
-  {id:'job2',event:'job',target:2,reward:260,name:'Запасной план',desc:'Выполни 2 подработки.'},
-  {id:'nitro1',event:'nitro',target:1,reward:220,name:'На полном баллоне',desc:'Используй нитро в заезде.'},
-  {id:'buy1',event:'buy',target:1,reward:300,name:'Расширение гаража',desc:'Купи одну машину.'}
+  {id:'races3',event:'race',target:3,reward:120,name:'На линии',desc:'Заверши 3 уличных заезда.'},
+  {id:'wins2',event:'win',target:2,reward:160,name:'Без права на ошибку',desc:'Выиграй 2 заезда.'},
+  {id:'shift4',event:'perfectShift',target:4,reward:140,name:'Идеальная КПП',desc:'Сделай 4 идеальных переключения.'},
+  {id:'job2',event:'job',target:2,reward:100,name:'Запасной план',desc:'Выполни 2 подработки.'},
+  {id:'nitro1',event:'nitro',target:1,reward:120,name:'На полном баллоне',desc:'Используй нитро в заезде.'},
+  {id:'buy1',event:'buy',target:1,reward:150,name:'Расширение гаража',desc:'Купи одну машину.'}
 ];
 function haptic(type='light'){
   if(!state.settings?.haptics)return;
@@ -1183,7 +1202,7 @@ function toggleSetting(key){
 }
 
 /* ==================== DAILY REWARD ==================== */
-const DAILY_REWARDS = [150,200,300,400,600,800,1200];
+const DAILY_REWARDS = [120,160,220,300,400,550,800];
 function checkDailyEligible(){
   const now=Date.now();
   const hours = (now-state.lastDailyClaim)/3600000;
@@ -1250,13 +1269,7 @@ function awardMoney(amount, reason){
   const root=document.getElementById('money-modal-root');
   if(root && state.settings.animations){
     root.innerHTML='<div class="money-burst"><div class="money-burst-card"><div class="money-symbol">₳</div><div class="money-amount">+'+fmt(amount)+'</div><div class="money-label">SYNDICATE CREDIT · '+escapeHtml(reason||'НАГРАДА')+'</div></div></div>';
-    setTimeout(()=>{ if(root) root.innerHTML=''; },900);
-    for(let i=0;i<7;i++){
-      const el=document.createElement('div'); el.className='money-fly'; el.innerText='₳ '+fmt(Math.max(1,Math.round(amount/7)));
-      el.style.left=(40+Math.random()*20)+'%'; el.style.top=(42+Math.random()*10)+'%';
-      el.style.setProperty('--dx',(Math.random()*180-90)+'px'); el.style.setProperty('--dy',(-80-Math.random()*100)+'px');
-      document.body.appendChild(el); setTimeout(()=>el.remove(),1100);
-    }
+    setTimeout(()=>{ if(root) root.innerHTML=''; },780);
   }
 }
 function openPublicProfile(name,val,wins,races,cars,profile){
@@ -1506,7 +1519,7 @@ function raceFrame(now){
   simulateRace(dt);
   c.uiTimer+=dt;
   /* Физика каждый кадр, DOM — максимум ~30 раз/сек. Стрелки получают transform. */
-  if(c.uiTimer>=.033){c.uiTimer=0;updateRaceHUD();}
+  if(c.uiTimer>=.066){c.uiTimer=0;updateRaceHUD();}
   if(!c.finished)c.raf=requestAnimationFrame(raceFrame);
 }
 function simulateRace(dt){
@@ -1766,7 +1779,7 @@ function initSupabase(){
   if(!sb){
     try{
       if(SUPABASE_URL&&SUPABASE_KEY){
-        sb=createClient(SUPABASE_URL,SUPABASE_KEY,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:false}});
+        sb=createBrowserSupabase();
       }
     }catch(e){console.warn('supabase init failed',e);}
   }
@@ -1835,15 +1848,22 @@ async function recoverServerSession(){
     return onlineAuthReady;
   }catch(e){console.warn('Telegram session recovery failed',e);return false;}
 }
+let serverBackoffUntil=0;
 async function serverFetch(input,init={}){
+  const path=String(input||'');
+  const bypassBackoff=/\/api\/(auth\/telegram|session)/.test(path);
+  if(!bypassBackoff&&Date.now()<serverBackoffUntil){
+    return new Response(JSON.stringify({ok:false,error:'online services temporarily unavailable',code:'BACKOFF'}),{status:503,headers:{'Content-Type':'application/json','Cache-Control':'no-store'}});
+  }
   const run=async()=>{
     const controller=new AbortController();
-    const timer=setTimeout(()=>controller.abort(),12000);
+    const timer=setTimeout(()=>controller.abort(),10000);
     try{
       const response=await fetch(input,{credentials:'include',cache:'no-store',...init,signal:init?.signal||controller.signal});
       serverReachable=true;lastServerContact=Date.now();
+      if(response.status===503)serverBackoffUntil=Date.now()+5000;else if(response.ok)serverBackoffUntil=0;
       return response;
-    }catch(e){serverReachable=false;throw e;}
+    }catch(e){serverReachable=false;serverBackoffUntil=Date.now()+5000;throw e;}
     finally{clearTimeout(timer);}
   };
   let response=await run();
@@ -1851,10 +1871,10 @@ async function serverFetch(input,init={}){
     onlineAuthReady=false;
     if(await recoverServerSession())response=await run();
   }
-  if(!response.ok&&response.status!==401){
+  if(!response.ok&&response.status!==401&&response.status!==503){
     try{
       const detail=await response.clone().json();
-      console.warn('AutoSyndicate API request failed',{path:String(input),status:response.status,code:detail?.code||'REQUEST_FAILED'});
+      console.warn('AutoSyndicate API request failed',{path,status:response.status,code:detail?.code||'REQUEST_FAILED'});
     }catch(_){ }
   }
   return response;
@@ -1897,18 +1917,22 @@ function playerProfilePayload(){
     last_seen: new Date().toISOString()
   };
 }
+let profileSyncInFlight:any=null,lastProfileSyncAt=0;
 async function syncPlayerProfile(force=false){
   if(!force && document.getElementById('screen-race')?.classList.contains('active')) return false;
   if(!state.playerId || !/^(tg_[0-9]{1,24})$/.test(state.playerId)) return false;
-  try{
+  if(profileSyncInFlight)return profileSyncInFlight;
+  if(!force&&Date.now()-lastProfileSyncAt<20000)return true;
+  profileSyncInFlight=(async()=>{try{
     const car=typeof carsDB!=='undefined'?carsDB.find(c=>c.id===state.activeCarId):null;
     const response=await serverFetch('/api/profile/sync',{
       method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({displayName:safeText(state.playerName,'Гонщик',48),photoUrl:state.playerPhoto||null,currentCarName:car?.name||null,activeCarId:Number(state.activeCarId)||1})
     });
-    if(!response.ok){console.warn('profile sync rejected',response.status);return false;}
-    return true;
-  }catch(e){console.warn('player profile sync failed',e);return false;}
+    if(!response.ok)return false;
+    lastProfileSyncAt=Date.now();return true;
+  }catch(e){console.warn('player profile sync failed',e);return false;}finally{profileSyncInFlight=null;}})();
+  return profileSyncInFlight;
 }
 async function loadPlayerLeaderboard(){
   try{
@@ -2304,6 +2328,8 @@ async function claimPvpResults(){
       bolt:'<path d="m13 2-8 12h6l-1 8 9-13h-6l0-7Z"/>',
       shield:'<path d="M12 3 20 6v6c0 5-3.4 8-8 10-4.6-2-8-5-8-10V6l8-3Z"/>',
       copy:'<rect x="8" y="8" width="11" height="11" rx="2"/><path d="M16 8V5H5v11h3"/>',
+      coin:'<circle cx="12" cy="12" r="8"/><path d="M9 9.5c0-1.2 1.1-2 3-2s3 .8 3 2-1 1.8-3 2-3 .8-3 2 1.1 2 3 2 3-.8 3-2M12 5.5v13"/>',
+      tune:'<path d="M4 7h9M17 7h3M11 4v6M4 17h3M11 17h9M9 14v6"/>',
       car:'<path d="m5 13 2-5h10l2 5"/><path d="M3 13h18v5H3zM6 18v2M18 18v2M6 15h.01M18 15h.01"/>'
     };
     return '<svg class="'+cls+'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+(p[name]||p.car)+'</svg>';
@@ -2797,13 +2823,14 @@ async function claimPvpResults(){
   const GEAR_CAPS=[0,40,90,150,215,285,380];
   const GEAR_FLOORS=[0,0,31,72,126,184,246];
   const GEAR_TORQUE=[0,1.20,1.04,.89,.76,.65,.56];
-  const RARITY_LABEL_V9={common:'COMMON',rare:'RARE',epic:'EPIC',legendary:'LEGENDARY',mythic:'MYTHIC'};
+  const RARITY_LABEL_V9={common:'ОБЫЧНЫЙ',rare:'РЕДКИЙ',epic:'ЭПИЧЕСКИЙ',legendary:'ЛЕГЕНДАРНЫЙ',mythic:'МИФИЧЕСКИЙ'};
   const CASES_V9={
-    bronze:{id:'bronze',name:'Street Case',price:350,weights:[['common',72],['rare',23],['epic',4.7],['legendary',.3]]},
-    silver:{id:'silver',name:'Carbon Case',price:1400,weights:[['common',50],['rare',37],['epic',11.8],['legendary',1.2]]},
-    gold:{id:'gold',name:'Syndicate Case',price:4500,weights:[['common',35],['rare',42],['epic',20],['legendary',2.7],['mythic',.3]]}
+    bronze:{id:'bronze',name:'Уличный кейс',price:600,weights:[['common',72],['rare',23],['epic',4.7],['legendary',.3]]},
+    silver:{id:'silver',name:'Карбоновый кейс',price:2200,weights:[['common',50],['rare',37],['epic',11.8],['legendary',1.2]]},
+    gold:{id:'gold',name:'Кейс Синдиката',price:7000,weights:[['common',35],['rare',42],['epic',20],['legendary',2.7],['mythic',.3]]}
   };
-  const CASE_TARGET_INDEX=36;
+  const CASE_TARGET_INDEX=21;
+  const CASE_REEL_LENGTH=27;
 
   function clamp(v,min,max){return Math.max(min,Math.min(max,v));}
   function rand(){if(globalThis.crypto?.getRandomValues){const a=new Uint32Array(1);crypto.getRandomValues(a);return a[0]/4294967296;}return Math.random();}
@@ -2854,7 +2881,7 @@ async function claimPvpResults(){
     const c=raceCtx;if(!c)return;
     c.gearCaps=GEAR_CAPS.slice();
     c.gearFloors=GEAR_FLOORS.slice();
-    c.trackLength=1050+Math.floor(rand()*180);
+    c.trackLength=880+Math.floor(rand()*170);
     c.zeroTo100=0;c.stalled=false;c.stallTimer=0;c.throttleKick=0;c.throttleWasDown=false;
     c.lastVisualLead=0;c.overtakes=0;c.fxParticles=null;c.fxCanvas=null;c.fxCtx=null;c.fxW=0;c.fxH=0;
     c.aiGear=1;c.aiRpm=1200;c.aiShiftPause=0;
@@ -2874,6 +2901,13 @@ async function claimPvpResults(){
     v8ShowRaceCockpit();
     const c=raceCtx;if(!c)return;
     const map=document.querySelector('#race-content .race-map');
+    if(map){
+      map.classList.add('race-road-pro');
+      if(!map.querySelector('.race-road-lanes'))map.insertAdjacentHTML('afterbegin','<div class="race-road-lanes"><i></i><i></i><i></i></div><div class="race-road-edge left"></div><div class="race-road-edge right"></div>');
+      const me=document.getElementById('map-me'),ai=document.getElementById('map-ai');
+      if(me&&!me.querySelector('.race-car-shape'))me.innerHTML='<i class="race-car-shape player"><b></b><span></span></i>';
+      if(ai&&!ai.querySelector('.race-car-shape'))ai.innerHTML='<i class="race-car-shape rival"><b></b><span></span></i>';
+    }
     if(map&&!document.getElementById('race-fx-canvas')){
       const canvas=document.createElement('canvas');canvas.id='race-fx-canvas';canvas.className='race-fx-canvas';canvas.setAttribute('aria-hidden','true');map.prepend(canvas);
       c.fxCanvas=canvas;initRaceFx(c);
@@ -2890,19 +2924,20 @@ async function claimPvpResults(){
   function initRaceFx(c){
     const canvas=c.fxCanvas;if(!canvas)return;
     const lowEnd=!!c.fxLowQuality||(navigator.hardwareConcurrency&&navigator.hardwareConcurrency<=4)||(navigator.deviceMemory&&navigator.deviceMemory<=4);
-    const dpr=Math.min(window.devicePixelRatio||1,lowEnd?1:1.35);
+    c.fxLowQuality=lowEnd;
+    const dpr=Math.min(window.devicePixelRatio||1,lowEnd?1:1.15);
     const rect=canvas.getBoundingClientRect();
     const w=Math.max(1,Math.floor(rect.width*dpr)),h=Math.max(1,Math.floor(rect.height*dpr));
     if(canvas.width!==w||canvas.height!==h){canvas.width=w;canvas.height=h;}
-    c.fxCtx=canvas.getContext('2d',{alpha:true,desynchronized:true});c.fxDpr=dpr;c.fxW=w;c.fxH=h;
-    const count=lowEnd?10:16;
+    c.fxCtx=canvas.getContext('2d',{alpha:true,desynchronized:true});c.fxDpr=dpr;c.fxW=w;c.fxH=h;c.fxMeasureTick=0;c.fxFrameTick=0;
+    const count=lowEnd?7:11;
     c.fxParticles=Array.from({length:count},(_,i)=>({x:(i+.5)/count,y:rand(),len:.08+rand()*.16,speed:.65+rand()*.8}));
   }
   function renderRaceFx(c,dt){
     if(!c?.fxCtx||!c.fxCanvas||state.settings?.reducedMotion)return;
-    const rect=c.fxCanvas.getBoundingClientRect(),dpr=c.fxDpr||1;
-    const rw=Math.floor(rect.width*dpr),rh=Math.floor(rect.height*dpr);
-    if(Math.abs(rw-c.fxW)>2||Math.abs(rh-c.fxH)>2){initRaceFx(c);}
+    c.fxFrameTick=(c.fxFrameTick||0)+1;if(c.fxLowQuality&&c.fxFrameTick%2)return;
+    c.fxMeasureTick=(c.fxMeasureTick||0)+1;
+    if(c.fxMeasureTick>=90){c.fxMeasureTick=0;const rect=c.fxCanvas.getBoundingClientRect(),dpr=c.fxDpr||1;const rw=Math.floor(rect.width*dpr),rh=Math.floor(rect.height*dpr);if(Math.abs(rw-c.fxW)>3||Math.abs(rh-c.fxH)>3){initRaceFx(c);}}
     const ctx=c.fxCtx,w=c.fxW,h=c.fxH;ctx.clearRect(0,0,w,h);
     const intensity=clamp((c.speed-55)/250,0,1);if(intensity<=.02)return;
     ctx.globalCompositeOperation='source-over';ctx.lineCap='round';
@@ -3086,7 +3121,7 @@ async function claimPvpResults(){
     if(t<.94)return {type:'plate',rarity,label:['A111AA','X777XX','M505MM','K009KK'][Math.floor(rand()*4)]};
     return {type:'car',rarity:rarity==='common'?'rare':rarity,label:'RARE VEHICLE'};
   }
-  function v9CaseItemHtml(p){return '<div class="case-reel-item rar-'+p.rarity+'"><span>'+RARITY_LABEL_V9[p.rarity]+'</span><b>'+escapeHtml(p.label)+'</b><small>'+({coins:'SYND',tuning:'TUNING',plate:'PLATE',car:'VEHICLE'}[p.type]||'DROP')+'</small></div>';}
+  function v9CaseItemHtml(p){const type=({coins:'КРЕДИТЫ',tuning:'ТЮНИНГ',plate:'НОМЕР',car:'МАШИНА'}[p.type]||'НАГРАДА');const icon=({coins:'coin',tuning:'tune',plate:'plate',car:'car'}[p.type]||'case');return '<div class="case-reel-item rar-'+p.rarity+'"><div class="case-reel-icon">'+svgIcon(icon)+'</div><span>'+RARITY_LABEL_V9[p.rarity]+'</span><b>'+escapeHtml(p.label)+'</b><small>'+type+'</small></div>'; }
   function grantServerCasePrize(prize,cs,rollId){
     if(state.caseAppliedRolls.includes(rollId))return false;
     if(prize.type==='coins'){state.coins+=prize.amount;state.stats.totalEarned+=prize.amount;}
@@ -3130,14 +3165,14 @@ async function claimPvpResults(){
       const payload=apiPayload;const rollId=String(payload?.roll_id||payload?.id||''),prize=normalizeServerPrize(payload?.prize||{}),price=intNumber(payload?.price,cs.price,1,100000);
       if(!rollId)throw new Error('server roll id missing');if(state.coins<price)throw new Error('Недостаточно SYND для подтверждения server roll');
       state.coins-=price;state.stats.totalSpent+=price;state.stats.casesOpened++;saveState();updateHeader();
-      const strip=[];for(let i=0;i<43;i++)strip.push(i===CASE_TARGET_INDEX?prize:visualPrize(cs));
-      ensureCaseModalV9();const modal=document.getElementById('case-open-modal');modal.classList.add('show');modal.innerHTML='<div class="case-open-shell"><div class="case-open-head"><span>'+cs.name+'</span><b>CARBON DRAW</b></div><div class="case-reel-window" id="case-reel-window"><div class="case-pointer-v9"></div><div class="case-center-line"></div><div class="case-reel-track" id="case-reel-track">'+strip.map(v9CaseItemHtml).join('')+'</div></div><div class="case-open-status" id="case-open-status">Результат определён · прокрутка...</div></div>';
+      const strip=[];for(let i=0;i<CASE_REEL_LENGTH;i++)strip.push(i===CASE_TARGET_INDEX?prize:visualPrize(cs));
+      ensureCaseModalV9();const modal=document.getElementById('case-open-modal');modal.classList.add('show');modal.innerHTML='<div class="case-open-shell case-premium-v126"><div class="case-open-head"><div><small>КЕЙС СИНДИКАТА</small><span>'+cs.name+'</span></div><b>ОТКРЫТИЕ</b></div><div class="case-reel-caption"><span>НАГРАДА ЗАФИКСИРОВАНА</span><i></i><span>ПОД УКАЗАТЕЛЕМ</span></div><div class="case-reel-window" id="case-reel-window"><div class="case-pointer-v9"><i></i></div><div class="case-center-line"></div><div class="case-reel-track" id="case-reel-track">'+strip.map(v9CaseItemHtml).join('')+'</div></div><div class="case-open-status" id="case-open-status"><span class="case-spinner"></span><b>ЛЕНТА ЗАПУЩЕНА</b><small>Результат уже сохранён сервером</small></div></div>';
       const track=document.getElementById('case-reel-track'),win=document.getElementById('case-reel-window');
-      const finish=async()=>{if(state.caseOpening!==true)return;grantServerCasePrize(prize,cs,rollId);await markCaseClaimed(rollId);const st=document.getElementById('case-open-status');if(st)st.innerHTML='<span class="rar-'+prize.rarity+'">'+RARITY_LABEL_V9[prize.rarity]+'</span><b>'+escapeHtml(prize.label)+'</b><button class="btn btn-select" onclick="closeCaseModal()">ЗАБРАТЬ</button>';state.caseOpening=false;saveState();renderCases();};
+      const finish=async()=>{if(state.caseOpening!==true)return;grantServerCasePrize(prize,cs,rollId);await markCaseClaimed(rollId);const st=document.getElementById('case-open-status');if(st){st.classList.add('case-result-ready');st.innerHTML='<span class="rar-'+prize.rarity+'">'+RARITY_LABEL_V9[prize.rarity]+'</span><b>'+escapeHtml(prize.label)+'</b><small>Награда добавлена в коллекцию</small><button class="btn btn-select" onclick="closeCaseModal()">ЗАБРАТЬ</button>';}state.caseOpening=false;saveState();renderCases();};
       requestAnimationFrame(()=>requestAnimationFrame(()=>{
         const item=track?.children?.[CASE_TARGET_INDEX];if(!track||!win||!item){finish();return;}
         const target=win.clientWidth/2-(item.offsetLeft+item.offsetWidth/2);track.style.transform='translate3d('+target+'px,0,0)';
-        let done=false;const complete=()=>{if(done)return;done=true;finish();};track.addEventListener('transitionend',complete,{once:true});setTimeout(complete,3600);
+        let done=false;const complete=()=>{if(done)return;done=true;finish();};track.addEventListener('transitionend',complete,{once:true});setTimeout(complete,3400);
       }));
     }catch(e){state.caseOpening=false;console.warn('case roll failed',e);showToast('Не удалось открыть кейс. Попробуйте ещё раз.');renderCases();}
   };
@@ -3508,7 +3543,7 @@ if (typeof window !== 'undefined') {
       id:Number(c.id),name:String(c.name||`CAR ${c.id}`),image:c.image?String(c.image):null,price:Number(c.price)||0,power:Number(c.power)||100,
       tier:String(c.tier||'Street'),cat:String(c.cat||'street'),flavor:String(c.flavor||'')
     }));
-    carsDB.splice(0,carsDB.length,...normalized);
+    carsDB.splice(0,carsDB.length,...normalized);applyEconomyCarPrices(carsDB);
     const activeIds=new Set(carsDB.map((c:any)=>Number(c.id)));
     state.ownedCars=(state.ownedCars||[]).filter((id:any)=>activeIds.has(Number(id)));
     if(!state.ownedCars.length && carsDB[0]) state.ownedCars=[carsDB[0].id];
@@ -3528,6 +3563,8 @@ if (typeof window !== 'undefined') {
     });
     opponentsDB.splice(0,opponentsDB.length,...Array.from(merged.values()));
   }
+  opponentsDB.forEach((o:any)=>{o.reward=economyRaceReward(o);});
+  tournamentsDB.forEach((o:any)=>{o.reward=Math.round(economyRaceReward(o)*2.8);o.entryFee=Math.max(120,Math.round(o.reward*.18));});
 
   function rivalMetaV11(opp:any){
     const rec=state.rivalRecords?.[String(opp?.id)]||{wins:0,losses:0};
@@ -3545,15 +3582,18 @@ if (typeof window !== 'undefined') {
   }
 
   let duelFilter='all';
+  let duelPage=0;
+  const DUEL_PAGE_SIZE=6;
   (window as any).setDuelFilter=(filter:string)=>{
-    duelFilter=['all','equal','risk','boss'].includes(filter)?filter:'all';
+    duelFilter=['all','equal','risk','boss'].includes(filter)?filter:'all';duelPage=0;
     document.querySelectorAll('[data-duel-filter]').forEach((el:any)=>el.classList.toggle('active',el.dataset.duelFilter===duelFilter));
     renderOpponents();
   };
+  (window as any).setDuelPage=(delta:number)=>{duelPage=Math.max(0,duelPage+Number(delta||0));renderOpponents();};
 
   const switchDuelSubV11=switchDuelSub;
   switchDuelSub=function(sub){
-    switchDuelSubV11(sub);
+    switchDuelSubV11(sub);duelPage=0;
     const filters=document.getElementById('duel-filter-wrap');
     const summary=document.getElementById('duel-match-summary');
     if(filters)filters.style.display=sub==='normal'?'flex':'none';
@@ -3562,39 +3602,32 @@ if (typeof window !== 'undefined') {
 
   renderOpponents=function(){
     updateHeader();
-    const root=document.getElementById('opponent-list');
-    const summary=document.getElementById('duel-match-summary');
-    if(!root)return;
+    const root=document.getElementById('opponent-list'),summary=document.getElementById('duel-match-summary');if(!root)return;
     root.innerHTML='';
     const car=carsDB.find((x:any)=>x.id===state.activeCarId);
-    if(!car){root.innerHTML='<div class="empty-note">Сначала выберите активную машину.</div>';return;}
-    if(state.licenseSuspended){root.innerHTML='<div class="empty-note">Права изъяты. Восстановите допуск к заездам в профиле.</div>';return;}
+    if(!car){root.innerHTML='<div class="empty-note">Выберите активную машину.</div>';return;}
+    if(state.licenseSuspended){root.innerHTML='<div class="empty-note">Нет допуска к заездам. Восстановите права в профиле.</div>';return;}
     const myPower=getEffectivePower(car),history=state.raceHistory||[];
     let pool=(state.duelSub==='tour'?tournamentsDB:opponentsDB).filter((o:any)=>state.level>=Number(o.unlockLevel||1));
     if(state.duelSub==='tour'){
       const now=Date.now(),day=new Date().toISOString().slice(0,10);
       pool=pool.filter((o:any)=>{const r=state.tournamentRuns[String(o.id)]||{};const count=r.day===day?(Number(r.count)||0):0,next=r.day===day?(Number(r.next)||0):0;return count<3&&next<=now;});
     }else{
-      if(duelFilter==='equal') pool=pool.filter((o:any)=>Math.abs(Number(o.power)-myPower)/Math.max(myPower,1)<=.18 && !o.boss);
-      if(duelFilter==='risk') pool=pool.filter((o:any)=>Number(o.power)>myPower*1.08 && !o.boss);
-      if(duelFilter==='boss') pool=pool.filter((o:any)=>o.boss);
-      pool=pool.slice().sort((a:any,b:any)=>{
-        if(duelFilter==='risk'||duelFilter==='boss')return Number(a.power)-Number(b.power);
-        return Math.abs(Number(a.power)-myPower)-Math.abs(Number(b.power)-myPower);
-      });
+      if(duelFilter==='equal')pool=pool.filter((o:any)=>Math.abs(Number(o.power)-myPower)/Math.max(myPower,1)<=.18&&!o.boss);
+      if(duelFilter==='risk')pool=pool.filter((o:any)=>Number(o.power)>myPower*1.08&&!o.boss);
+      if(duelFilter==='boss')pool=pool.filter((o:any)=>o.boss);
+      pool=pool.slice().sort((a:any,b:any)=>duelFilter==='risk'||duelFilter==='boss'?Number(a.power)-Number(b.power):Math.abs(Number(a.power)-myPower)-Math.abs(Number(b.power)-myPower));
     }
-    const visible=state.duelSub==='tour'?pool.slice(0,3):pool.slice(0,24);
-    if(summary){
-      summary.innerHTML='<div class="summary-main"><div class="summary-car">'+escapeHtml(String(car.name).split(/\s+/).slice(0,2).map((x:any)=>x[0]).join('').slice(0,3))+'</div><div><b>'+escapeHtml(car.name)+'</b><span>Текущая сборка · '+escapeHtml(car.tier)+'</span></div></div><strong>'+fmt(myPower)+'<small>л.с.</small></strong>';
-    }
-    const onlineLabel=document.getElementById('duel-online-label');if(onlineLabel)onlineLabel.textContent=pool.length+' соперников в сетке';
-    if(!visible.length){root.innerHTML='<div class="empty-note">Под этот фильтр соперников нет. Попробуйте другой диапазон.</div>';return;}
+    const pageSize=state.duelSub==='tour'?3:DUEL_PAGE_SIZE,totalPages=Math.max(1,Math.ceil(pool.length/pageSize));duelPage=Math.min(duelPage,totalPages-1);
+    const visible=pool.slice(duelPage*pageSize,duelPage*pageSize+pageSize);
+    if(summary){summary.innerHTML='<div class="summary-main"><div class="summary-car">'+escapeHtml(String(car.name).split(/\s+/).slice(0,2).map((x:any)=>x[0]).join('').slice(0,3))+'</div><div><b>'+escapeHtml(car.name)+'</b><span>'+fmt(myPower)+' л.с. · '+pool.length+' доступно</span></div></div>'+(state.duelSub==='tour'?'':'<div class="duel-pager"><button '+(duelPage<=0?'disabled':'')+' onclick="setDuelPage(-1)">‹</button><b>'+(duelPage+1)+' / '+totalPages+'</b><button '+(duelPage>=totalPages-1?'disabled':'')+' onclick="setDuelPage(1)">›</button></div>');}
+    const onlineLabel=document.getElementById('duel-online-label');if(onlineLabel)onlineLabel.textContent=pool.length+' соперников';
+    if(!visible.length){root.innerHTML='<div class="empty-note">Под этот фильтр соперников нет.</div>';return;}
     root.innerHTML=visible.map((opp:any,idx:number)=>{
       const m=rivalMetaV11(opp),delta=(Number(opp.power)-myPower)/Math.max(myPower,1),winChance=Math.max(4,Math.min(96,Math.round(50-delta*82))),fee=entryFeeFor(opp),recent=history.includes(String(opp.id));
       const r=state.tournamentRuns[String(opp.id)]||{},day=new Date().toISOString().slice(0,10),count=state.duelSub==='tour'&&r.day===day?(Number(r.count)||0):0,mult=state.duelSub==='tour'?([1,.72,.48][Math.min(2,count)]||.48):1,reward=Math.round(Number(opp.reward||0)*mult);
-      const cls=opp.boss?'boss extreme':delta>.28?'extreme':delta>.08?'risk':delta<-.15?'easy':'even';
-      const label=opp.boss?'БОСС':delta>.28?'ПРЕДЕЛ':delta>.08?'РИСК':delta<-.15?'ПРЕИМУЩЕСТВО':'РАВНО';
-      return '<article class="duel-card-v11 '+cls+'" style="animation-delay:'+Math.min(idx*28,240)+'ms"><div class="duel-card-main"><div class="duel-card-top"><div class="duel-avatar-v11">'+escapeHtml(m.avatar)+'</div><div class="duel-card-id"><b>'+escapeHtml(opp.name)+'</b><span>'+escapeHtml(m.car)+' · '+escapeHtml(m.style)+'</span></div><div class="duel-card-rating"><b>'+m.rating+'</b><small>РЕЙТИНГ</small></div></div><div class="duel-difficulty"><span class="'+(cls.includes('extreme')?'extreme':cls.includes('risk')?'risk':'')+'">'+label+'</span><small>'+(Number(opp.power)>=myPower?'+':'')+Math.round(Number(opp.power)-myPower)+' л.с. к вашей сборке</small></div><div class="duel-quote-v11">“'+escapeHtml(opp.taunt||pick(opp.preLines||['Встретимся на финише.']))+'”</div><div class="duel-tags-v11"><span>Стиль <b>'+escapeHtml(m.style)+'</b></span><span>Трасса <b>'+escapeHtml(m.favoriteTracks[0]||'Промзона')+'</b></span><span>Карьера <b>'+m.wins+'–'+m.losses+'</b></span><span>С вами <b>'+m.record.wins+'–'+m.record.losses+'</b></span></div><div class="duel-match-v11"><div class="duel-match-head"><span>Расклад</span><b>'+winChance+'% шанс</b></div><div class="duel-match-bar"><i style="width:'+winChance+'%"></i></div></div></div><aside class="duel-card-side"><div><div class="duel-power-v11"><span>Мощность</span><b>'+fmt(opp.power)+'</b><small>л.с.</small></div><div class="duel-money-v11"><div><span>Вход</span><b>'+fmt(fee)+'</b></div><div><span>Приз</span><b>'+fmt(reward)+'</b></div></div></div><div><button class="duel-enter-v11" onclick="prepareRace(\''+String(opp.id).replace(/'/g,"\\'")+'\',\''+(state.duelSub==='tour'?'tour':'normal')+'\')">НА ЛИНИЮ</button>'+(recent?'<div class="duel-recent-v11">Недавняя встреча</div>':'')+'</div></aside></article>';
+      const cls=opp.boss?'boss extreme':delta>.28?'extreme':delta>.08?'risk':delta<-.15?'easy':'even',label=opp.boss?'БОСС':delta>.28?'ПРЕДЕЛ':delta>.08?'РИСК':delta<-.15?'ПРЕИМУЩЕСТВО':'РАВНО';
+      return '<article class="duel-card-v126 '+cls+'" style="animation-delay:'+Math.min(idx*22,150)+'ms"><div class="duel-avatar-v126">'+escapeHtml(m.avatar)+'</div><div class="duel-info-v126"><div class="duel-name-v126"><b>'+escapeHtml(opp.name)+'</b><span class="'+(cls.includes('extreme')?'extreme':cls.includes('risk')?'risk':'')+'">'+label+'</span></div><small>'+escapeHtml(m.car)+' · '+escapeHtml(m.style)+'</small><div class="duel-bar-v126"><i style="width:'+winChance+'%"></i></div><div class="duel-meta-v126"><span>Рейтинг <b>'+m.rating+'</b></span><span>Шанс <b>'+winChance+'%</b></span><span>Серия <b>'+m.record.wins+'–'+m.record.losses+'</b></span></div></div><div class="duel-power-v126"><b>'+fmt(opp.power)+'</b><span>л.с.</span><small>'+(Number(opp.power)>=myPower?'+':'')+Math.round(Number(opp.power)-myPower)+'</small></div><div class="duel-action-v126"><div><span>Вход <b>'+fmt(fee)+'</b></span><span>Приз <b>'+fmt(reward)+'</b></span></div><button onclick="prepareRace(\''+String(opp.id).replace(/'/g,"\\'")+'\',\''+(state.duelSub==='tour'?'tour':'normal')+'\')">ВЫЗВАТЬ</button>'+(recent?'<small>Недавний заезд</small>':'')+'</div></article>';
     }).join('');
   };
 
