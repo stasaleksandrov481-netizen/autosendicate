@@ -1,6 +1,20 @@
-# AutoSyndicate Carbon v12.2
+# AutoSyndicate Carbon v12.3 — UI Remaster
 
-AutoSyndicate Carbon v12.2 is a Telegram Mini App built for Vercel on Next.js App Router + TypeScript. v12 focuses on reliable server synchronization: Telegram identity, friends, clans, chat, market, cases, referrals, bank operations and legacy PvP now use the same Vercel/HttpOnly-session boundary instead of depending on a browser Supabase session.
+AutoSyndicate Carbon v12.3 is the production UI remaster of the existing Telegram Mini App. It keeps the v12.2 server/auth foundation while rebuilding the player-facing visual system into a compact Carbon District interface: graphite/carbon surfaces, restrained amber accents, denser cards, mobile-first spacing, lower-cost motion and a larger duel network.
+
+
+## v12.3 UI remaster
+
+- Player HUD no longer exposes migration, Vercel, cookie, schema or server-debug instructions.
+- Carbon District visual system replaces the old pink/neon legacy palette across old components.
+- Compact 2-column garage and dealer layout on normal phones, adaptive 1-column layout on narrow devices.
+- Reworked profile dashboard, navigation, market, chat, cases, casino, settings and duel cards.
+- Duel network displays up to 16 relevant opponents at once.
+- 24 additional locally available rivals (64 total when the server content patch is installed).
+- `content-visibility`, paint containment, transform/opacity motion and reduced-motion support are used to lower rendering cost in Telegram WebView.
+- Chat polling is stopped when leaving the chat screen.
+- Telegram session cookie uses production `SameSite=None; Secure`, and bot/env values are normalized before verification.
+- Optional server content patch: `supabase/schema_ui_remaster.sql`.
 
 ## v12 synchronization fixes
 
@@ -17,7 +31,7 @@ AutoSyndicate Carbon v12.2 is a Telegram Mini App built for Vercel on Next.js Ap
 - Bank transfers and claims use `/api/bank`.
 - Legacy async PvP transitions use `/api/pvp`.
 - Background claims no longer stop when the optional browser Supabase client is unavailable.
-- Profile screen includes a server-sync indicator and a retry action.
+- Infrastructure diagnostics remain internal; the commercial player profile does not expose server/schema details.
 - `/api/sync/status` reports the deployed synchronization schema version.
 - Friends now receive server-enriched profile/presence data.
 - Chat messages are resolved to stable `player_id` values rather than identifying the sender by display name.
@@ -26,7 +40,7 @@ AutoSyndicate Carbon v12.2 is a Telegram Mini App built for Vercel on Next.js Ap
 ## v11 systems retained
 
 - Redesigned Street Network duel list.
-- 40 server-managed AI opponents.
+- 40 original server-managed AI opponents, plus the v12.3 Carbon League expansion.
 - Server-managed car catalog.
 - `/admin` Control Center with statistics, moderation, balance/car/content controls and audit log.
 - Telegram Bot API webhook with secret-token verification and update idempotency.
@@ -102,7 +116,7 @@ npm run dev
 1. Apply all required SQL migrations.
 2. Configure Production/Preview/Development environment variables in Vercel.
 3. Deploy the Next.js project.
-4. Open the Mini App from the configured Telegram bot and verify the profile card shows `СЕРВЕР ПОДКЛЮЧЕН`.
+4. Open the Mini App from the configured Telegram bot and verify online features load without player-facing infrastructure diagnostics.
 5. Open Friends, Clans and Chat. They should work even if the optional browser Supabase realtime session cannot be created.
 6. Configure the Telegram webhook from the protected admin flow. See `BOT_SETUP.md`.
 

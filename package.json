@@ -1,6 +1,6 @@
 {
   "name": "autosyndicate-carbon",
-  "version": "12.2.0",
+  "version": "12.3.0",
   "private": true,
   "engines": {
     "node": ">=20.9.0"
@@ -12,7 +12,8 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "check:env": "node scripts/check-env.mjs",
-    "check:sync": "node scripts/verify-v12.mjs"
+    "check:sync": "node scripts/verify-v12.mjs",
+    "check:release": "node scripts/verify-remaster.mjs && node scripts/verify-v12.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.3",

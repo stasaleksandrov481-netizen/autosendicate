@@ -130,3 +130,13 @@ The compatibility runtime still uses inline handlers/styles, so CSP currently al
 - Keep `ADMIN_TELEGRAM_IDS` small and numeric.
 - Review `admin_audit_log_v11` after privileged changes.
 - Disable stale admin accounts immediately.
+
+## v12.3 production hardening
+
+- Server environment values are normalized before validation to prevent accidental whitespace from breaking Telegram HMAC verification.
+- Telegram Mini App sessions use `HttpOnly`, `Secure` and production `SameSite=None` cookies so the session survives supported Telegram WebView embedding while write routes keep same-origin validation.
+- Session cookies use high priority.
+- HSTS, DNS-prefetch disablement, nosniff, CORP, Permissions Policy and CSP remain enabled at the Next.js boundary.
+- Player-facing pages no longer expose migration filenames, environment-variable names, cookie state or internal server error details. Operational diagnostics stay in server logs and the protected admin surface.
+
+The legacy wallet/inventory compatibility state is still not a substitute for a fully server-authoritative economy. Valuable competitive rewards should continue to be validated server-side before they become economically significant.
