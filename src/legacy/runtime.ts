@@ -3140,15 +3140,26 @@ async function claimPvpResults(){
     if(!document.getElementById('screen-clans')){const s=document.createElement('div');s.id='screen-clans';s.className='screen';s.innerHTML='<div class="back-link" onclick="switchTab(\'profile\')">← Профиль</div><div class="section-title"><span>Кланы</span></div><div id="clan-content-v9" class="list-container"></div><div class="section-title clan-ranking-head-v9"><span>Рейтинг кланов</span></div><div class="clan-rank-tabs-v9"><button class="chip-btn active" id="clan-rank-global-v9" onclick="setClanRankMode(\'global\')">ГЛОБАЛЬНЫЙ</button><button class="chip-btn" id="clan-rank-division-v9" onclick="setClanRankMode(\'division\')">ДИВИЗИОН</button></div><div id="clan-leaderboard-v9" class="list-container"></div>';main.appendChild(s);}
   }
   let clanRankMode='global',currentClanDivision='Мантика';
+  function onlineFailureMessageV12(code='',fallback='Серверная сессия недоступна'){
+    code=String(code||window.__AUTOSYNDICATE_AUTH_ERROR__?.code||'');
+    if(code==='DATABASE_MIGRATION_REQUIRED')return'База не обновлена. Выполни schema_v12_2_FULL.sql';
+    if(code==='SERVER_CONFIG_INVALID')return'Не настроены Environment Variables на Vercel';
+    if(code==='TELEGRAM_INITDATA_MISSING')return'Открой игру через Mini App кнопкой бота';
+    if(code==='TELEGRAM_AUTH_INVALID')return'Telegram-авторизация отклонена. Проверь токен бота';
+    if(code==='PLAYER_BANNED')return'Аккаунт заблокирован';
+    if(code==='UNAUTHORIZED')return'Сессия истекла. Переоткрой Mini App';
+    return fallback;
+  }
   async function socialApi(path,method='GET',body=null,feature='Социальные функции'){
-    if(!onlineAuthReady&&!await ensureOnlineAuth()&&!await recoverServerSession())throw new Error('Требуется запуск через Telegram Mini App');
+    if(!onlineAuthReady&&!await ensureOnlineAuth()&&!await recoverServerSession())throw new Error(onlineFailureMessageV12());
     if(method!=='GET')void syncPlayerProfile(true);
     const opts={method,credentials:'include',cache:'no-store',headers:{}};
     if(body!==null){opts.headers['Content-Type']='application/json';opts.body=JSON.stringify(body);}
     const response=await serverFetch(path,opts),payload=await response.json().catch(()=>null);
     if(!response.ok){
       const raw=String(payload?.error||'');
-      const human=raw==='unauthorized'?'Сессия истекла. Перезапусти Mini App':raw==='player banned'?'Аккаунт заблокирован':raw||('Сервер отклонил запрос '+response.status);
+      const code=String(payload?.code||'');
+      const human=code?onlineFailureMessageV12(code,raw||('Сервер отклонил запрос '+response.status)):(raw==='unauthorized'?'Сессия истекла. Переоткрой Mini App':raw==='player banned'?'Аккаунт заблокирован':raw||('Сервер отклонил запрос '+response.status));
       throw new Error(human);
     }
     return payload;
@@ -3187,18 +3198,33 @@ async function claimPvpResults(){
     const root=document.getElementById('clan-leaderboard-v9');if(!root)return;try{const rows=(clanRankMode==='division'?clanLeaderboardCache.filter(r=>r.division===currentClanDivision):clanLeaderboardCache).slice(0,100);root.innerHTML=rows.length?'<div class="clan-table-v9"><div class="clan-table-row-v9 head"><span>#</span><b>КЛАН</b><span>ЛИГА</span><span>СОСТАВ</span><span>PTS</span></div>'+rows.map((r,i)=>'<div class="clan-table-row-v9"><span>'+(clanRankMode==='global'?(r.global_rank||i+1):(r.division_rank||i+1))+'</span><b>'+escapeHtml(r.name)+'</b><span>'+escapeHtml(r.division)+'</span><span>'+r.members+'</span><strong>'+fmt(r.score)+'</strong></div>').join('')+'</div>':'<div class="empty-note">В этом рейтинге пока нет кланов.</div>';}catch(e){root.innerHTML='<div class="empty-note">Рейтинг недоступен: '+escapeHtml(e.message)+'</div>';}
   }
 
+  function serverSyncPresentationV12(){
+    const issue=window.__AUTOSYNDICATE_AUTH_ERROR__||null;
+    const connected=onlineAuthReady&&serverReachable;
+    const needsMigration=connected&&serverSchemaVersion>=0&&serverSchemaVersion<12;
+    if(connected&&!needsMigration)return{connected:true,title:'СЕРВЕР ПОДКЛЮЧЕН',detail:escapeHtml(state.playerId||'Telegram session')};
+    if(needsMigration)return{connected:false,title:'БАЗА НЕ ОБНОВЛЕНА',detail:'Запусти supabase/schema_v12_2_FULL.sql'};
+    if(!serverReachable)return{connected:false,title:'СЕРВЕР НЕДОСТУПЕН',detail:'Vercel API не отвечает. Проверь deployment и Runtime Logs.'};
+    const code=String(issue?.code||'');
+    if(code==='DATABASE_MIGRATION_REQUIRED')return{connected:false,title:'БАЗА НЕ ГОТОВА',detail:'Запусти один файл: supabase/schema_v12_2_FULL.sql'};
+    if(code==='SERVER_CONFIG_INVALID')return{connected:false,title:'VERCEL ENV НЕ НАСТРОЕНЫ',detail:'Проверь server-only переменные в Vercel → Environment Variables'};
+    if(code==='TELEGRAM_INITDATA_MISSING')return{connected:false,title:'НЕТ TELEGRAM-СЕССИИ',detail:'Открой игру кнопкой Mini App из @AutoSyndicateBot'};
+    if(code==='TELEGRAM_AUTH_INVALID')return{connected:false,title:'TELEGRAM-АВТОРИЗАЦИЯ ОТКЛОНЕНА',detail:'Проверь TELEGRAM_BOT_TOKEN и что Mini App открыт именно этим ботом'};
+    if(code==='SERVER_SESSION_MISSING')return{connected:false,title:'СЕССИЯ НЕ СОЗДАНА',detail:'Сервер принял Telegram auth, но cookie не сохранилась'};
+    return{connected:false,title:'ПОДКЛЮЧЕНИЕ НЕ ЗАВЕРШЕНО',detail:'Нажми «ПОВТОРИТЬ». Если не поможет — проверь Vercel ENV и full SQL migration.'};
+  }
+
   window.retryServerSync=async function(){
     onlineAuthReady=false;serverReachable=true;
-    const ok=await ensureOnlineAuth()||await recoverServerSession();
-    if(ok){const schemaOk=await checkServerSync();await syncPlayerProfile(true);showToast(schemaOk?'Сервер синхронизирован':'Подключение есть, но требуется schema_v12.sql');}
-    else showToast('Не удалось восстановить Telegram-сессию');
+    const ok=await recoverServerSession()||await ensureOnlineAuth();
+    if(ok){const schemaOk=await checkServerSync();await syncPlayerProfile(true);if(schemaOk)showToast('Сервер подключен');}
     renderProfile();
   };
   const v8RenderProfile=renderProfile;
   renderProfile=function(){
     v8RenderProfile();ensureV9Screens();const grid=document.querySelector('#screen-profile .hub-grid');if(grid&&!document.getElementById('hub-friends-v9')){const a=document.createElement('div');a.className='hub-card';a.id='hub-friends-v9';a.onclick=()=>switchTab('friends');a.innerHTML='<div class="ic">'+svgIcon('users')+'</div><div class="lbl">Друзья</div><div class="sub">ID и Telegram login</div>';grid.appendChild(a);const b=document.createElement('div');b.className='hub-card';b.id='hub-clans-v9';b.onclick=()=>switchTab('clans');b.innerHTML='<div class="ic">'+svgIcon('shield')+'</div><div class="lbl">Кланы</div><div class="sub">Состав и рейтинг</div>';grid.appendChild(b);}
     const hero=document.querySelector('#screen-profile .profile-hero');if(hero&&!document.getElementById('profile-race-stats-v9')){const car=activeCar(),box=document.createElement('div');box.id='profile-race-stats-v9';box.className='profile-race-stats-v9';box.innerHTML='<span>RATING <b>'+playerRating()+'</b></span><span>0–100 <b>'+(state.stats.best0100?state.stats.best0100.toFixed(2)+' s':'—')+'</b></span><span>МАШИНА <b>'+escapeHtml(car?.name||'—')+'</b></span>';hero.appendChild(box);}
-    if(hero){let sync=document.getElementById('server-sync-v12');if(!sync){sync=document.createElement('div');sync.id='server-sync-v12';sync.className='server-sync-v12';hero.appendChild(sync);}const connected=onlineAuthReady&&serverReachable,needsMigration=connected&&serverSchemaVersion>=0&&serverSchemaVersion<12;const title=needsMigration?'ТРЕБУЕТСЯ MIGRATION V12':(connected?'СЕРВЕР ПОДКЛЮЧЕН':(!serverReachable?'СЕРВЕР НЕДОСТУПЕН':'СЕРВЕР НЕ СИНХРОНИЗИРОВАН'));const detail=needsMigration?'Выполни supabase/schema_v12.sql':(connected?escapeHtml(state.playerId||'Telegram session'):(!serverReachable?'Проверь соединение и повтори синхронизацию':'Открой игру через Telegram Mini App или повтори подключение'));sync.innerHTML='<span class="sync-dot-v12 '+(connected&&!needsMigration?'on':'off')+'"></span><div><b>'+title+'</b><small>'+detail+'</small></div>'+((!connected||needsMigration)?'<button onclick="retryServerSync()">ПОВТОРИТЬ</button>':'');}
+    if(hero){let sync=document.getElementById('server-sync-v12');if(!sync){sync=document.createElement('div');sync.id='server-sync-v12';sync.className='server-sync-v12';hero.appendChild(sync);}const view=serverSyncPresentationV12();sync.innerHTML='<span class="sync-dot-v12 '+(view.connected?'on':'off')+'"></span><div><b>'+view.title+'</b><small>'+view.detail+'</small></div>'+(!view.connected?'<button onclick="retryServerSync()">ПОВТОРИТЬ</button>':'');}
   };
 
   const v8SwitchTab=switchTab;

@@ -16,6 +16,6 @@ export async function GET() {
       }
     });
   } catch (error) {
-    return apiError(error, 401);
+    return apiError(error, 500);
   }
 }

@@ -1,5 +1,13 @@
 import { NextResponse } from 'next/server';
 
+type ErrorLike = {
+  name?: string;
+  message?: string;
+  code?: string;
+  details?: string;
+  hint?: string;
+};
+
 export function assertSameOrigin(request: Request) {
   const origin = request.headers.get('origin');
   if (!origin) return;
@@ -10,11 +18,72 @@ export function assertSameOrigin(request: Request) {
   if (originHost !== host) throw new Error('origin rejected');
 }
 
+function classifyInfrastructureError(error: unknown) {
+  const e = (error ?? {}) as ErrorLike;
+  const message = String(e.message ?? 'request failed');
+  const code = String(e.code ?? '');
+  const context = `${message} ${e.details ?? ''} ${e.hint ?? ''}`.toLowerCase();
+
+  const migrationCodes = new Set(['42P01', '42703', '42883', 'PGRST202', 'PGRST204', 'PGRST205']);
+  const migrationText =
+    context.includes('relation') && context.includes('does not exist') ||
+    context.includes('could not find the table') ||
+    context.includes('could not find the function') ||
+    context.includes('schema cache') ||
+    context.includes('telegram_principals') ||
+    context.includes('game_settings_v11');
+
+  if (migrationCodes.has(code) || migrationText) {
+    return {
+      status: 503,
+      code: 'DATABASE_MIGRATION_REQUIRED',
+      error: 'database migration required'
+    };
+  }
+
+  if (message === 'SERVER_CONFIG_INVALID') {
+    return { status: 503, code: 'SERVER_CONFIG_INVALID', error: 'server configuration incomplete' };
+  }
+
+  return null;
+}
+
 export function apiError(error: unknown, status = 400) {
+  const infra = classifyInfrastructureError(error);
+  if (infra) {
+    return NextResponse.json({ ok: false, error: infra.error, code: infra.code }, {
+      status: infra.status,
+      headers: { 'Cache-Control': 'no-store' }
+    });
+  }
+
   const message = error instanceof Error ? error.message : 'request failed';
-  const safe = message === 'UNAUTHORIZED' ? 'unauthorized' : message === 'FORBIDDEN' ? 'forbidden' : message === 'BANNED' ? 'player banned' : message.slice(0, 180);
-  const code = message === 'UNAUTHORIZED' ? 401 : (message === 'FORBIDDEN' || message === 'BANNED') ? 403 : message.includes('rate limit') ? 429 : status;
-  return NextResponse.json({ ok: false, error: safe }, { status: code, headers: { 'Cache-Control':'no-store' } });
+  let code = 'REQUEST_FAILED';
+  let safe = message.slice(0, 180);
+  let resolvedStatus = status;
+
+  if (message === 'UNAUTHORIZED') {
+    code = 'UNAUTHORIZED';
+    safe = 'unauthorized';
+    resolvedStatus = 401;
+  } else if (message === 'FORBIDDEN') {
+    code = 'FORBIDDEN';
+    safe = 'forbidden';
+    resolvedStatus = 403;
+  } else if (message === 'BANNED') {
+    code = 'PLAYER_BANNED';
+    safe = 'player banned';
+    resolvedStatus = 403;
+  } else if (message.includes('rate limit')) {
+    code = 'RATE_LIMITED';
+    safe = 'rate limit exceeded';
+    resolvedStatus = 429;
+  }
+
+  return NextResponse.json({ ok: false, error: safe, code }, {
+    status: resolvedStatus,
+    headers: { 'Cache-Control': 'no-store' }
+  });
 }
 
 export function noStoreJson(body: unknown, status = 200) {
