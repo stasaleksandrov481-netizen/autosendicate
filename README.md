@@ -150,3 +150,10 @@ The v12 synchronization layer is substantially safer, but the old compatibility 
 ### v12.2 session/bootstrap repair
 
 v12.2 fixes a misleading failure mode where database/config errors from `/api/auth/telegram` were returned as HTTP 401 and the client showed “Telegram session unavailable”. Infrastructure failures now have separate error codes, the profile card shows the actual corrective action, and `schema_v12_2_FULL.sql` removes the historical migration-order dependency.
+
+
+## v12.4 RU FIX
+
+В этой сборке исправлены массовые `400` у `/api/pvp`, `/api/profile/sync`, `/api/sync/status`, `/api/referrals`, `/api/bank`, `/api/social/clans` и других маршрутов, проходивших через старый rate-limit RPC. Также исправлено падение сетки дуэлей `rivalMeta is not defined`, переработано казино, уведомления и русифицирован игровой UI.
+
+Для существующей базы после деплоя выполните `supabase/schema_v12_4_FIX.sql`. Для новой базы используйте обновлённый `supabase/schema_v12_2_FULL.sql`.
