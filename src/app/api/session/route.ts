@@ -1,7 +1,21 @@
-import { getSession } from '@/lib/security/session';
-import { noStoreJson } from '@/lib/security/http';
+import { requireSession } from '@/lib/security/session';
+import { apiError, noStoreJson } from '@/lib/security/http';
+
 export const runtime = 'nodejs';
+
 export async function GET() {
-  const session = await getSession();
-  return noStoreJson({ authenticated: Boolean(session), session: session ? { playerId: session.playerId, username: session.username, name: session.name } : null }, session ? 200 : 401);
+  try {
+    const session = await requireSession();
+    return noStoreJson({
+      authenticated: true,
+      session: {
+        playerId: session.playerId,
+        telegramId: session.telegramId,
+        username: session.username,
+        name: session.name
+      }
+    });
+  } catch (error) {
+    return apiError(error, 401);
+  }
 }

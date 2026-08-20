@@ -53,14 +53,24 @@ export const GAME_SHELL = `
   </div>
 
   <!-- ДУЭЛЬ: выбор соперника -->
-  <div id="screen-duel-select" class="screen">
-    <div class="section-title"><span>Уличные дуэли</span></div>
-    <div class="subtabs">
-      <div class="subtab-btn active" id="dsub-normal" onclick="switchDuelSub('normal')">Соперники</div>
+  <div id="screen-duel-select" class="screen duel-screen-v11">
+    <div class="duel-v11-heading">
+      <div><span>STREET NETWORK</span><h2>Уличные дуэли</h2><p>Выбирай соперника под текущую сборку. Чем выше риск, тем больше награда.</p></div>
+      <div class="duel-v11-live"><i></i><b>LIVE</b><span id="duel-online-label">матчмейкинг активен</span></div>
+    </div>
+    <div class="subtabs duel-v11-tabs">
+      <div class="subtab-btn active" id="dsub-normal" onclick="switchDuelSub('normal')">Сетка</div>
       <div class="subtab-btn" id="dsub-tour" onclick="switchDuelSub('tour')">Турниры</div>
       <div class="subtab-btn" id="dsub-pvp" onclick="switchDuelSub('pvp')">Игроки</div>
     </div>
-    <div class="list-container" id="opponent-list"></div>
+    <div class="duel-v11-toolbar" id="duel-filter-wrap">
+      <button class="active" data-duel-filter="all" onclick="setDuelFilter('all')">Все</button>
+      <button data-duel-filter="equal" onclick="setDuelFilter('equal')">Равные</button>
+      <button data-duel-filter="risk" onclick="setDuelFilter('risk')">Риск</button>
+      <button data-duel-filter="boss" onclick="setDuelFilter('boss')">Боссы</button>
+    </div>
+    <div class="duel-v11-summary" id="duel-match-summary"></div>
+    <div class="list-container duel-v11-list" id="opponent-list"></div>
     <div class="list-container" id="pvp-wrap" style="display:none;">
       <div class="sell-picker">
         <div class="gauge-label" style="text-align:left;margin-bottom:6px;">Создать вызов</div>

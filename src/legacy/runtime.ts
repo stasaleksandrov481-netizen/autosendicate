@@ -183,6 +183,16 @@ function initTelegram(){
       }
     }
   }catch(e){console.warn('telegram init failed',e);}
+  // The verified HttpOnly server session is authoritative for identity. This also restores
+  // identity after Telegram WebView reloads where initData is briefly unavailable.
+  try{
+    const ss=window.__AUTOSYNDICATE_SERVER_SESSION__;
+    if(ss?.playerId&&/^tg_[0-9]{1,24}$/.test(ss.playerId)){
+      state.playerId=ss.playerId;
+      if(ss.name)state.playerName=safeText(ss.name,'Гонщик',48);
+      if(ss.username)state.playerUsername=safeText(ss.username,'',32).replace(/^@/,'').replace(/[^A-Za-z0-9_]/g,'');
+    }
+  }catch(_){ }
   if(!state.playerId){
     let local=localStorage.getItem('autosyndicate_local_id');
     if(!/^guest_[a-zA-Z0-9-]{8,80}$/.test(local||'')){
@@ -1652,7 +1662,7 @@ function finishRace(playerWins,c){
   updateHeader();saveState();checkAchievements();
   try{
     const raceId=crypto.randomUUID();
-    void fetch('/api/race/submit',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+    void serverFetch('/api/race/submit',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({
       raceId,opponentId:String(opp.id),route:String(c.route||'route'),won:!!playerWins,elapsedMs:Math.round(c.elapsed*1000),
       topSpeedKmh:Number(c.topSpeed||c.speed||0),perfectShifts:Number(c.perfectShifts||0),goodShifts:Number(c.goodShifts||0),
       missedShifts:Number(c.errors||0),startedInGear:1,finishGear:Math.max(1,Math.min(6,Number(c.gear)||1))
@@ -1718,57 +1728,118 @@ const CHAT_RATE_MS=2500;
 const CHAT_MAX_PER_MIN=8;
 let chatSendTimes=[];
 let onlineBootstrapped=false;
-let onlineAuthReady=false;
+let onlineAuthReady=false; // verified Vercel/Telegram HttpOnly session, not browser Supabase auth
+let browserRealtimeReady=false;
+let serverReachable=true;
+let lastServerContact=0;
+let serverSchemaVersion=-1;
 let onlineIntervalsStarted=false;
 
 function initSupabase(){
-  if(sb){ if(!onlineBootstrapped)bootstrapOnline(); return sb; }
-  try{
-    if(SUPABASE_URL&&SUPABASE_KEY){
-      sb=createClient(SUPABASE_URL,SUPABASE_KEY,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:false}});
-      bootstrapOnline();
-    }
-  }catch(e){console.warn('supabase init failed',e);}
+  if(!sb){
+    try{
+      if(SUPABASE_URL&&SUPABASE_KEY){
+        sb=createClient(SUPABASE_URL,SUPABASE_KEY,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:false}});
+      }
+    }catch(e){console.warn('supabase init failed',e);}
+  }
+  if(!onlineBootstrapped)bootstrapOnline();
   return sb;
 }
 async function ensureOnlineAuth(){
-  if(!sb)return false;
   try{
-    const {data,error}=await sb.auth.getSession();
-    if(error)throw error;
-    const uid=data?.session?.user?.id;
-    const verifiedTelegramId=data?.session?.user?.user_metadata?.telegram_id;
-    const expectedTelegramId=/^tg_[0-9]{1,24}$/.test(state.playerId)?Number(state.playerId.slice(3)):null;
-    onlineAuthReady=Boolean(uid && expectedTelegramId && Number(verifiedTelegramId)===expectedTelegramId && window.__AUTOSYNDICATE_AUTHENTICATED__===true);
-    if(!onlineAuthReady)console.warn('Secure Telegram/Supabase session is unavailable. Online writes are disabled.');
+    if(window.__AUTOSYNDICATE_AUTHENTICATED__===true&&window.__AUTOSYNDICATE_SERVER_SESSION__?.playerId){
+      onlineAuthReady=true;
+    }else{
+      const response=await serverFetch('/api/session',{method:'GET',credentials:'include',cache:'no-store'});
+      const payload=await response.json().catch(()=>null);
+      if(response.ok&&payload?.authenticated&&payload?.session?.playerId){
+        window.__AUTOSYNDICATE_SERVER_SESSION__=payload.session;
+        window.__AUTOSYNDICATE_AUTHENTICATED__=true;
+        onlineAuthReady=true;
+        if(/^tg_[0-9]{1,24}$/.test(payload.session.playerId))state.playerId=payload.session.playerId;
+        if(payload.session.name)state.playerName=safeText(payload.session.name,'Гонщик',48);
+        if(payload.session.username)state.playerUsername=safeText(payload.session.username,'',32).replace(/^@/,'').replace(/[^A-Za-z0-9_]/g,'');
+      }else onlineAuthReady=false;
+    }
+    browserRealtimeReady=Boolean(window.__AUTOSYNDICATE_SUPABASE_SESSION__===true);
+    if(sb&&!browserRealtimeReady){
+      try{
+        const {data}=await sb.auth.getSession();
+        browserRealtimeReady=Boolean(data?.session?.user);
+      }catch(_){ browserRealtimeReady=false; }
+    }
     return onlineAuthReady;
   }catch(e){
     onlineAuthReady=false;
-    console.warn('Secure online authentication failed.',e?.message||e);
+    console.warn('Secure server authentication failed.',e?.message||e);
     return false;
   }
 }
 async function bootstrapOnline(){
-  if(onlineBootstrapped||!sb)return;
+  if(onlineBootstrapped)return;
   onlineBootstrapped=true;
   await ensureOnlineAuth();
-  subscribeMarket();syncPlayerProfile();loadPlayerLeaderboard();pollBackgroundClaims();
-  if(!onlineIntervalsStarted){onlineIntervalsStarted=true;setInterval(pollBackgroundClaims,90000);setInterval(syncPlayerProfile,30000);}
+  if(sb&&browserRealtimeReady)subscribeMarket();
+  if(onlineAuthReady){await checkServerSync();await syncPlayerProfile(true);loadPlayerLeaderboard();pollBackgroundClaims();}
+  if(!onlineIntervalsStarted){onlineIntervalsStarted=true;setInterval(pollBackgroundClaims,90000);setInterval(()=>{if(onlineAuthReady){syncPlayerProfile();checkServerSync();}},30000);}
+}
+async function checkServerSync(){
+  if(!onlineAuthReady)return false;
+  try{
+    const response=await serverFetch('/api/sync/status',{credentials:'include',cache:'no-store'}),payload=await response.json().catch(()=>null);
+    if(!response.ok)throw new Error(payload?.error||('sync status '+response.status));
+    serverSchemaVersion=Number(payload?.schemaVersion)||0;
+    return serverSchemaVersion>=12;
+  }catch(e){console.warn('server sync status',e);return false;}
+}
+async function recoverServerSession(){
+  try{
+    const reauth=window.__AUTOSYNDICATE_REAUTH__;
+    if(typeof reauth!=='function')return false;
+    const ok=await reauth();
+    onlineAuthReady=Boolean(ok&&window.__AUTOSYNDICATE_SERVER_SESSION__?.playerId);
+    if(onlineAuthReady){
+      const s=window.__AUTOSYNDICATE_SERVER_SESSION__;
+      if(/^tg_[0-9]{1,24}$/.test(s.playerId))state.playerId=s.playerId;
+      if(s.name)state.playerName=safeText(s.name,'Гонщик',48);
+      if(s.username)state.playerUsername=safeText(s.username,'',32).replace(/^@/,'').replace(/[^A-Za-z0-9_]/g,'');
+    }
+    return onlineAuthReady;
+  }catch(e){console.warn('Telegram session recovery failed',e);return false;}
+}
+async function serverFetch(input,init={}){
+  const run=async()=>{
+    const controller=new AbortController();
+    const timer=setTimeout(()=>controller.abort(),12000);
+    try{
+      const response=await fetch(input,{credentials:'include',cache:'no-store',...init,signal:init?.signal||controller.signal});
+      serverReachable=true;lastServerContact=Date.now();
+      return response;
+    }catch(e){serverReachable=false;throw e;}
+    finally{clearTimeout(timer);}
+  };
+  let response=await run();
+  if(response.status===401){
+    onlineAuthReady=false;
+    if(await recoverServerSession())response=await run();
+  }
+  return response;
 }
 async function requireOnlineWrite(feature='Онлайн-функция'){
-  if(!sb) initSupabase();
   if(!onlineAuthReady){
-    const ok=await ensureOnlineAuth();
-    if(!ok){ showToast(feature+': открой игру через Telegram Mini App'); return false; }
+    const ok=await ensureOnlineAuth()||await recoverServerSession();
+    if(!ok){ showToast(feature+': требуется запуск через Telegram Mini App'); return false; }
   }
-  const synced=await syncPlayerProfile(true);
-  if(!synced){ showToast(' '+feature+': профиль не синхронизирован'); return false; }
+  // Presentation profile sync is best-effort. The Telegram principal/profile is already created
+  // by /api/auth/telegram, so a temporary profile-sync failure must not disable friends/chat/etc.
+  void syncPlayerProfile(true);
   return true;
 }
 
 function pollBackgroundClaims(){
   if(document.getElementById('screen-race')?.classList.contains('active')) return;
-  if(!sb) return;
+  if(!onlineAuthReady) return;
   claimSoldProceeds();
   claimBankTransfers();
   claimPvpResults();
@@ -1798,7 +1869,7 @@ async function syncPlayerProfile(force=false){
   if(!state.playerId || !/^(tg_[0-9]{1,24})$/.test(state.playerId)) return false;
   try{
     const car=typeof carsDB!=='undefined'?carsDB.find(c=>c.id===state.activeCarId):null;
-    const response=await fetch('/api/profile/sync',{
+    const response=await serverFetch('/api/profile/sync',{
       method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({displayName:safeText(state.playerName,'Гонщик',48),photoUrl:state.playerPhoto||null,currentCarName:car?.name||null,activeCarId:Number(state.activeCarId)||1})
     });
@@ -1807,21 +1878,20 @@ async function syncPlayerProfile(force=false){
   }catch(e){console.warn('player profile sync failed',e);return false;}
 }
 async function loadPlayerLeaderboard(){
-  if(!sb) return [];
   try{
-    const {data,error}=await sb.from('player_profiles').select('id,name,photo_url,level,balance,xp,races,wins,losses,total_earned,owned_cars,active_car_id,last_seen').order('level',{ascending:false}).order('total_earned',{ascending:false}).limit(200);
-    if(error) throw error;
-    return data||[];
-  }catch(e){ console.warn('player leaderboard:',e.message); return []; }
+    if(!onlineAuthReady&&!await ensureOnlineAuth())return [];
+    const response=await serverFetch('/api/profile/players',{credentials:'include',cache:'no-store'}),payload=await response.json().catch(()=>null);
+    if(!response.ok)throw new Error(payload?.error||('request rejected '+response.status));
+    return Array.isArray(payload?.players)?payload.players:[];
+  }catch(e){ console.warn('player leaderboard:',e?.message||e); return []; }
 }
 async function openPublicProfileByName(name){
-  if(!sb){ showToast('Профиль недоступен без подключения'); return; }
   try{
+    if(!onlineAuthReady&&!await ensureOnlineAuth()){showToast('Профиль доступен после входа через Telegram');return;}
     const clean=safeText(name,'',48); if(!clean) return;
-    const {data,error}=await sb.from('player_profiles').select('id,name,photo_url,level,balance,xp,races,wins,losses,total_earned,owned_cars,active_car_id,last_seen').eq('name',clean).order('last_seen',{ascending:false}).limit(1).maybeSingle();
-    if(error) throw error;
-    if(data) openPublicProfileData(data);
-    else showToast('Профиль игрока не найден');
+    const response=await serverFetch('/api/profile/players?q='+encodeURIComponent(clean),{credentials:'include',cache:'no-store'}),payload=await response.json().catch(()=>null);
+    if(!response.ok)throw new Error(payload?.error||('request rejected '+response.status));
+    if(payload?.player) openPublicProfileData(payload.player); else showToast('Профиль игрока не найден');
   }catch(e){ console.warn(e); showToast('Не удалось загрузить профиль'); }
 }
 /* ---------- РЫНОК ---------- */
@@ -1850,16 +1920,15 @@ function subscribeMarket(){
 }
 async function refreshMarket(){
   const statusEl = document.getElementById('market-status');
-  if(!sb){ if(statusEl) statusEl.innerText=' Рынок недоступен (нет подключения к серверу)'; return; }
   if(statusEl) statusEl.innerText='Загрузка лотов…';
   try{
-    const {data, error} = await sb.from('market_cars').select('*').eq('status','active').order('id',{ascending:false}).limit(60);
-    if(error) throw error;
-    renderMarketList(data||[]);
-    if(statusEl) statusEl.innerText = (data&&data.length) ? 'Активных лотов: '+data.length : 'Рынок пуст';
-  }catch(e){ console.warn(e); if(statusEl) statusEl.innerText=' Не удалось загрузить рынок'; }
-  claimSoldProceeds();
-  renderMyListings();
+    const response=await serverFetch('/api/market',{credentials:'include',cache:'no-store'}),payload=await response.json().catch(()=>null);
+    if(!response.ok)throw new Error(payload?.error||('market rejected '+response.status));
+    const data=Array.isArray(payload?.data)?payload.data:[];
+    renderMarketList(data);
+    if(statusEl) statusEl.innerText=data.length?'Активных лотов: '+data.length:'Рынок пуст';
+  }catch(e){ console.warn(e); if(statusEl) statusEl.innerText='Не удалось загрузить рынок'; }
+  if(onlineAuthReady){claimSoldProceeds();renderMyListings();}
 }
 function renderMarketList(rows){
   const c=document.getElementById('market-list'); if(!c) return;
@@ -1907,60 +1976,23 @@ function promptListCar(carId){
   listCarForSale(carId, price);
 }
 async function listCarForSale(carId, price){
-  if(!sb){ showToast('Рынок недоступен'); return; }
   if(!await requireOnlineWrite('Рынок')) return;
-  if(!state.ownedCars.includes(carId)) return;
-  price=Math.trunc(Number(price));if(!Number.isFinite(price)||price<=0||price>MAX_MARKET_PRICE){showToast('Некорректная цена лота');return;}
-  if(state.ownedCars.length<=1){ showToast('Нельзя продать последнюю машину'); return; }
-  const car=carsDB.find(c=>c.id===carId);
+  if(!state.ownedCars.includes(carId)||state.ownedCars.length<=1)return;
+  price=Math.trunc(Number(price));if(!Number.isFinite(price)||price<=0||price>MAX_MARKET_PRICE)return;
+  const snapshot=typeof vehicleSnapshot==='function'?vehicleSnapshot(carId):{carId,upgrades:{engine:0,turbo:0,gearbox:0,tires:0},fuel:getFuel(carId),condition:getCondition(carId)};
   try{
-    const {error} = await sb.from('market_cars').insert({
-      seller_id: state.playerId, seller_name: state.playerName, car_id: String(carId), price: price
-    });
-    if(error) throw error;
-    state.ownedCars = state.ownedCars.filter(id=>id!==carId);
-    if(state.activeCarId===carId) state.activeCarId = state.ownedCars[0];
-    showToast(' "'+car.name+'" выставлена на рынок за '+fmt(price)+' ');
-    updateHeader(); saveState(); refreshMarket(); renderSellPicker();
-  }catch(e){ console.warn(e); showToast(' Не удалось выставить лот (проверь настройки Supabase)'); }
+    const response=await serverFetch('/api/market',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'list',price,vehicle:snapshot})});
+    const payload=await response.json().catch(()=>null);if(!response.ok)throw new Error(payload?.error||'market list rejected');
+    state.ownedCars=state.ownedCars.filter(id=>id!==carId);if(state.activeCarId===carId)state.activeCarId=state.ownedCars[0];updateHeader();saveState();refreshMarket();renderSellPicker();
+  }catch(e){console.warn(e);showToast('Не удалось выставить лот');}
 }
 async function cancelListing(id){
-  if(!sb) return;
-  if(!await requireOnlineWrite('Рынок')) return;
-  try{
-    const {data,error} = await sb.from('market_cars').select('*').eq('id',id).single();
-    if(error||!data) throw error||new Error('not found');
-    if(data.seller_id!==state.playerId || data.status!=='active'){ showToast('Лот недоступен'); refreshMarket(); return; }
-    const {error:updErr} = await sb.from('market_cars').update({status:'cancelled'}).eq('id',id).eq('status','active');
-    if(updErr) throw updErr;
-    const carId = parseInt(data.car_id,10);
-    if(!state.ownedCars.includes(carId)) state.ownedCars.push(carId);
-    showToast('Лот снят, машина вернулась в гараж');
-    saveState(); refreshMarket();
-  }catch(e){ console.warn(e); showToast(' Ошибка при снятии лота'); }
+  if(!await requireOnlineWrite('Рынок'))return;
+  try{const response=await serverFetch('/api/market',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'cancel',listingId:Number(id)})});const payload=await response.json().catch(()=>null);if(!response.ok)throw new Error(payload?.error||'market cancel rejected');const carId=parseInt(payload?.data?.car_id,10);if(carId&&!state.ownedCars.includes(carId))state.ownedCars.push(carId);saveState();refreshMarket();}catch(e){console.warn(e);showToast('Ошибка при снятии лота');}
 }
 async function buyListing(id){
-  if(!sb) return;
-  if(!await requireOnlineWrite('Рынок')) return;
-  try{
-    const {data,error} = await sb.from('market_cars').select('*').eq('id',id).eq('status','active').single();
-    if(error||!data){ showToast('Лот уже продан или недоступен'); refreshMarket(); return; }
-    if(data.seller_id===state.playerId){ showToast('Нельзя купить свой же лот'); return; }
-    const carId = parseInt(data.car_id,10);
-    if(state.ownedCars.includes(carId)){ showToast('У вас уже есть такая машина'); return; }
-    if(state.coins<data.price){ showToast('Недостаточно денег'); return; }
-    const {data:upd, error:updErr} = await sb.from('market_cars')
-      .update({status:'sold', buyer_id: state.playerId, sold_at: new Date().toISOString()})
-      .eq('id',id).eq('status','active').select();
-    if(updErr) throw updErr;
-    if(!upd || !upd.length){ showToast('Лот уже купил другой игрок'); refreshMarket(); return; }
-    state.coins -= data.price; state.stats.totalSpent += data.price;
-    state.ownedCars.push(carId);
-    getFuel(carId); getCondition(carId); getUpg(carId);
-    const car=carsDB.find(c=>c.id===carId);
-    showToast(' Куплено у игрока: '+(car?car.name:'машина'));
-    updateHeader(); saveState(); refreshMarket();
-  }catch(e){ console.warn(e); showToast(' Не удалось купить лот'); }
+  if(!await requireOnlineWrite('Рынок'))return;
+  try{const detail=await serverFetch('/api/market?id='+encodeURIComponent(String(id)),{credentials:'include',cache:'no-store'}),detailPayload=await detail.json().catch(()=>null),row=detailPayload?.data;if(!detail.ok||!row||row.status!=='active')throw new Error('Лот недоступен');if(state.coins<Number(row.price||0)){showToast('Недостаточно денег');return;}const response=await serverFetch('/api/market',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'buy',listingId:Number(id)})});const payload=await response.json().catch(()=>null);if(!response.ok)throw new Error(payload?.error||'market buy rejected');state.coins-=Number(row.price)||0;state.stats.totalSpent+=Number(row.price)||0;const carId=parseInt(row.car_id,10);if(carId&&!state.ownedCars.includes(carId))state.ownedCars.push(carId);updateHeader();saveState();refreshMarket();}catch(e){console.warn(e);showToast('Не удалось купить лот');}
 }
 function sellToState(carId){
   if(!state.ownedCars.includes(carId)) return;
@@ -1976,45 +2008,47 @@ function sellToState(carId){
   updateHeader(); saveState(); renderSellPicker();
 }
 async function claimSoldProceeds(){
-  if(!sb || !onlineAuthReady) return;
+  if(!onlineAuthReady)return;
   try{
-    const {data,error} = await sb.from('market_cars').select('id,price').eq('seller_id', state.playerId).eq('status','sold');
-    if(error || !data || !data.length) return;
-    if(!Array.isArray(state.claimedSaleIds)) state.claimedSaleIds=[];
-    let credited=0, total=0;
-    for(const row of data){
-      if(state.claimedSaleIds.includes(row.id)) continue;
-      const {data:settled,error:settleError}=await sb.from('market_cars').update({status:'settled'}).eq('id',row.id).eq('status','sold').select('id,price');
-      if(settleError || !settled || !settled.length) continue;
-      state.coins += Number(row.price)||0; state.stats.totalEarned += Number(row.price)||0;
-      state.claimedSaleIds.push(row.id);
-      credited++; total+=Number(row.price)||0;
+    const response=await serverFetch('/api/market?scope=mine',{credentials:'include',cache:'no-store'}),payload=await response.json().catch(()=>null);
+    if(!response.ok)throw new Error(payload?.error||('market mine rejected '+response.status));
+    const data=Array.isArray(payload?.data)?payload.data:[];
+    if(!Array.isArray(state.claimedSaleIds))state.claimedSaleIds=[];
+    let credited=0,total=0;
+    for(const row of data.filter(r=>r.status==='sold')){
+      if(state.claimedSaleIds.includes(Number(row.id)))continue;
+      try{
+        const settleResponse=await serverFetch('/api/market',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'settle',listingId:Number(row.id)})});
+        const settlePayload=await settleResponse.json().catch(()=>null),settled=settlePayload?.data;
+        if(!settleResponse.ok||!settled?.id)continue;
+        state.coins+=Number(row.price)||0;state.stats.totalEarned+=Number(row.price)||0;
+        state.claimedSaleIds.push(Number(row.id));credited++;total+=Number(row.price)||0;
+      }catch(_){ }
     }
-    if(credited){ showToast(' Продано на рынке: +'+fmt(total)+'  ('+credited+' лот.)'); updateHeader(); saveState(); }
-  }catch(e){ console.warn(e); }
+    if(credited){showToast('Продано на рынке: +'+fmt(total)+' SYND');updateHeader();saveState();}
+  }catch(e){console.warn('market proceeds',e);}
 }
 async function renderMyListings(){
-  const c=document.getElementById('market-mine-list'); if(!c || !sb) return;
+  const c=document.getElementById('market-mine-list');if(!c||!onlineAuthReady)return;
   try{
-    const {data} = await sb.from('market_cars').select('*').eq('seller_id', state.playerId).order('id',{ascending:false}).limit(30);
-    c.innerHTML='';
-    if(!data || !data.length){ c.innerHTML='<div class="empty-note">Вы пока ничего не продавали на рынке</div>'; return; }
-    const labels = {active:'На продаже', sold:'Продано ', settled:'Продано ', cancelled:'Снято с продажи'};
-    data.forEach(r=>{
-      const car=carsDB.find(x=>x.id===parseInt(r.car_id,10));
-      c.innerHTML += '<div class="listing-card"><div class="listing-head"><span class="listing-name">'+(car?car.name:'Машина #'+r.car_id)+'</span><span class="listing-meta">'+(labels[r.status]||r.status)+'</span></div>'+
-        '<div class="listing-head"><span class="listing-price">'+fmt(r.price)+' </span>'+
-        (r.status==='active' ? '<button class="sell-btn" onclick="cancelListing('+r.id+')">Снять</button>' : '')+
-        '</div></div>';
-    });
-  }catch(e){ console.warn(e); }
+    const response=await serverFetch('/api/market?scope=mine',{credentials:'include',cache:'no-store'}),payload=await response.json().catch(()=>null);
+    if(!response.ok)throw new Error(payload?.error||('market mine rejected '+response.status));
+    const data=Array.isArray(payload?.data)?payload.data:[];c.innerHTML='';
+    if(!data.length){c.innerHTML='<div class="empty-note">Вы пока ничего не продавали на рынке</div>';return;}
+    const labels={active:'На продаже',sold:'Продано',settled:'Получено',cancelled:'Снято с продажи'};
+    data.forEach(r=>{const car=carsDB.find(x=>x.id===parseInt(r.car_id,10));c.innerHTML+='<div class="listing-card"><div class="listing-head"><span class="listing-name">'+escapeHtml(car?car.name:'Машина #'+r.car_id)+'</span><span class="listing-meta">'+escapeHtml(labels[r.status]||r.status)+'</span></div><div class="listing-head"><span class="listing-price">'+fmt(r.price)+' SYND</span>'+(r.status==='active'?'<button class="sell-btn" onclick="cancelListing('+r.id+')">Снять</button>':'')+'</div></div>';});
+  }catch(e){console.warn(e);c.innerHTML='<div class="empty-note">Не удалось синхронизировать ваши лоты</div>';}
 }
 
 /* ---------- ЧАТ ---------- */
+let chatPollTimer=null;
+let lastChatSnapshot='';
 function openChat(){
-  initSupabase();
   loadChatHistory();
-  subscribeChat();
+  if(chatPollTimer)clearInterval(chatPollTimer);
+  chatPollTimer=setInterval(()=>{
+    if(document.getElementById('screen-chat')?.classList.contains('active'))loadChatHistory(true);
+  },3000);
   setTimeout(()=>{ const i=document.getElementById('chat-input'); if(i) i.focus(); }, 200);
 }
 function escapeHtml(s){
@@ -2022,47 +2056,52 @@ function escapeHtml(s){
 }
 function appendChatMessage(m){
   const c=document.getElementById('chat-messages'); if(!c) return;
-  const isMe = m.user_name===state.playerName;
+  const isMe = m.player_id===state.playerId;
   const time = m.created_at ? new Date(m.created_at).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'}) : '';
   const div=document.createElement('div');
   div.className='chat-msg'+(isMe?' me':'');
   const nm=escapeHtml(m.user_name||'Игрок');
-  div.innerHTML='<div class="chat-msg-name chat-profile-link" onclick="openPublicProfileByName('+JSON.stringify(m.user_name||'Игрок').replace(/"/g,'&quot;')+')">'+nm+' <span style="font-size:8px;color:var(--accent);">ПРОФИЛЬ</span></div><div class="chat-msg-text">'+escapeHtml(m.message)+'</div><div class="chat-msg-time">'+time+'</div>';
+  const profileTarget=m.player_id||m.user_name||'Игрок';
+  div.innerHTML='<div class="chat-msg-name chat-profile-link" onclick="openPublicProfileByName('+JSON.stringify(profileTarget).replace(/"/g,'&quot;')+')">'+nm+' <span style="font-size:8px;color:var(--accent);">ПРОФИЛЬ</span></div><div class="chat-msg-text">'+escapeHtml(m.message)+'</div><div class="chat-msg-time">'+time+'</div>';
   c.appendChild(div);
 }
-async function loadChatHistory(){
+async function loadChatHistory(silent=false){
   const statusEl=document.getElementById('chat-status');
-  if(!sb){ if(statusEl){ statusEl.innerText=' Чат недоступен (нет подключения к серверу)'; statusEl.classList.remove('on'); } return; }
-  if(statusEl) statusEl.innerText='Загрузка сообщений…';
+  if(!onlineAuthReady&&!await ensureOnlineAuth()){
+    if(statusEl&&!silent){statusEl.innerText='Войдите через Telegram Mini App';statusEl.classList.remove('on');}
+    return;
+  }
+  if(statusEl&&!silent)statusEl.innerText='Синхронизация…';
   try{
-    const {data,error} = await sb.from('chat_messages').select('*').order('id',{ascending:false}).limit(50);
-    if(error) throw error;
-    const msgs=(data||[]).slice().reverse();
-    const c=document.getElementById('chat-messages'); c.innerHTML='';
-    msgs.forEach(appendChatMessage);
-    c.scrollTop=c.scrollHeight;
-    if(statusEl){ statusEl.innerText='Онлайн'; statusEl.classList.add('on'); }
-  }catch(e){ console.warn(e); if(statusEl){ statusEl.innerText=' Ошибка загрузки чата'; statusEl.classList.remove('on'); } }
+    const response=await serverFetch('/api/social/chat',{method:'GET',credentials:'include',cache:'no-store'});
+    const payload=await response.json().catch(()=>null);
+    if(!response.ok)throw new Error(payload?.error||('request rejected '+response.status));
+    const msgs=Array.isArray(payload?.data)?payload.data:[];
+    const snapshot=msgs.map(x=>x.id).join(',');
+    const c=document.getElementById('chat-messages');
+    if(c&&snapshot!==lastChatSnapshot){
+      const wasNearBottom=c.scrollHeight-c.scrollTop-c.clientHeight<80;
+      c.innerHTML='';msgs.forEach(appendChatMessage);lastChatSnapshot=snapshot;
+      if(wasNearBottom||!silent)c.scrollTop=c.scrollHeight;
+    }
+    if(statusEl){statusEl.innerText='Онлайн';statusEl.classList.add('on');}
+  }catch(e){
+    if(statusEl){statusEl.innerText='Сервер чата недоступен';statusEl.classList.remove('on');}
+    if(!silent)console.warn('chat history',e);
+  }
 }
-function subscribeChat(){
-  if(!sb || chatChannel) return;
-  chatChannel = sb.channel('chat_messages_rt')
-    .on('postgres_changes', {event:'INSERT', schema:'public', table:'chat_messages'}, payload=>{
-      appendChatMessage(payload.new);
-      const c=document.getElementById('chat-messages'); if(c) c.scrollTop=c.scrollHeight;
-    })
-    .subscribe();
-}
+function subscribeChat(){ /* v12 uses server polling so chat works even without browser Supabase auth. */ }
 async function sendChatMessage(){
-  if(!sb){showToast('Чат недоступен');return;}
-  if(!await requireOnlineWrite('Чат')) return;
-  const input=document.getElementById('chat-input'),text=(input.value||'').trim().replace(/[\u0000-\u001f\u007f]/g,' ').slice(0,300);if(!text)return;
+  if(!await requireOnlineWrite('Чат'))return;
+  const input=document.getElementById('chat-input'),text=(input?.value||'').trim().replace(/[\u0000-\u001f\u007f]/g,' ').slice(0,300);if(!text)return;
   const now=Date.now();chatSendTimes=chatSendTimes.filter(ts=>now-ts<60000);
   if(chatSendTimes.length>=CHAT_MAX_PER_MIN || (chatSendTimes.length&&now-chatSendTimes[chatSendTimes.length-1]<CHAT_RATE_MS)){showToast('Не спамь: подожди пару секунд');haptic('warning');return;}
   try{
-    const {error}=await sb.from('chat_messages').insert({user_name:safeText(state.playerName,'Гонщик',48),message:text});if(error)throw error;
-    chatSendTimes.push(now);input.value='';haptic('light');
-  }catch(e){console.warn(e);showToast(' Сообщение не отправлено');}
+    const response=await serverFetch('/api/social/chat',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:text})});
+    const payload=await response.json().catch(()=>null);
+    if(!response.ok)throw new Error(payload?.error||('request rejected '+response.status));
+    chatSendTimes.push(now);input.value='';haptic('light');await loadChatHistory(true);
+  }catch(e){console.warn(e);showToast('Сообщение не отправлено');}
 }
 
 /* ==================== БАНК (ПЕРЕВОДЫ МЕЖДУ ИГРОКАМИ) ==================== */
@@ -2085,187 +2124,117 @@ function bankCooldownLeft(receiverId){
   return left>0 ? left : 0;
 }
 async function sendBankTransfer(){
-  if(!sb){ showToast('Банк недоступен (нет подключения)'); return; }
   if(!await requireOnlineWrite('Банк')) return;
   const idInput=document.getElementById('bank-to-id');
   const amountInput=document.getElementById('bank-amount');
-  const toId=(idInput.value||'').trim();
-  const amount=parseInt(amountInput.value,10);
+  const toId=(idInput?.value||'').trim();
+  const amount=parseInt(amountInput?.value||'0',10);
   const statusEl=document.getElementById('bank-send-status');
-  statusEl.style.color='var(--accent)';
-  if(!toId){ statusEl.innerText='Укажи ID получателя'; return; }
-  if(!/^(tg_[0-9]{1,24}|guest_[A-Za-z0-9-]{8,80})$/.test(toId)){statusEl.innerText='Некорректный ID получателя';return;}
-  if(toId===state.playerId){ statusEl.innerText='Нельзя перевести самому себе'; return; }
-  if(!amount || amount<=0){ statusEl.innerText='Некорректная сумма'; return; }
-  if(amount>BANK_MAX_PER_TRANSFER){ statusEl.innerText='Максимум за один перевод: '+fmt(BANK_MAX_PER_TRANSFER)+' '; return; }
-  if(amount>state.coins){ statusEl.innerText='Недостаточно денег'; return; }
+  if(statusEl)statusEl.style.color='var(--accent)';
+  if(!toId){ if(statusEl)statusEl.innerText='Укажи ID получателя'; return; }
+  if(!/^tg_[0-9]{1,24}$/.test(toId)){if(statusEl)statusEl.innerText='Переводы доступны только Telegram-игрокам';return;}
+  if(toId===state.playerId){ if(statusEl)statusEl.innerText='Нельзя перевести самому себе'; return; }
+  if(!amount || amount<=0){ if(statusEl)statusEl.innerText='Некорректная сумма'; return; }
+  if(amount>BANK_MAX_PER_TRANSFER){ if(statusEl)statusEl.innerText='Максимум за один перевод: '+fmt(BANK_MAX_PER_TRANSFER)+' SYND'; return; }
+  if(amount>state.coins){ if(statusEl)statusEl.innerText='Недостаточно денег'; return; }
   const cooldown=bankCooldownLeft(toId);
-  if(cooldown>0){ statusEl.innerText='Этому игроку можно перевести снова через '+Math.ceil(cooldown/60000)+' мин.'; return; }
+  if(cooldown>0){ if(statusEl)statusEl.innerText='Этому игроку можно перевести снова через '+Math.ceil(cooldown/60000)+' мин.'; return; }
   const sentToday=bankSentToday();
-  if(sentToday+amount>BANK_MAX_PER_DAY){ statusEl.innerText='Дневной лимит переводов: '+fmt(BANK_MAX_PER_DAY)+'  (уже отправлено '+fmt(sentToday)+')'; return; }
+  if(sentToday+amount>BANK_MAX_PER_DAY){ if(statusEl)statusEl.innerText='Дневной лимит переводов: '+fmt(BANK_MAX_PER_DAY)+' SYND'; return; }
   try{
-    const {error} = await sb.from('bank_transfers').insert({
-      sender_id: state.playerId, sender_name: state.playerName, receiver_id: toId, amount: amount
-    });
-    if(error) throw error;
-    state.coins -= amount;
-    state.bankSentLog.push({to:toId, amount, ts:Date.now()});
-    showToast(' Отправлено '+fmt(amount)+'  игроку '+toId);
-    statusEl.style.color='var(--green)'; statusEl.innerText='Перевод отправлен!';
-    amountInput.value=''; idInput.value='';
-    updateHeader(); saveState(); renderBankLog();
-    document.getElementById('bank-balance').innerText=fmt(state.coins);
-  }catch(e){ console.warn(e); statusEl.innerText=' Ошибка перевода'; }
+    const response=await serverFetch('/api/bank',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'send',receiverId:toId,amount})});
+    const payload=await response.json().catch(()=>null);
+    if(!response.ok)throw new Error(payload?.error||('bank rejected '+response.status));
+    state.coins-=amount;state.stats.totalSpent+=amount;state.bankSentLog.push({to:toId,amount,ts:Date.now()});
+    showToast('Отправлено '+fmt(amount)+' SYND игроку '+toId);
+    if(statusEl){statusEl.style.color='var(--green)';statusEl.innerText='Перевод отправлен';}
+    if(amountInput)amountInput.value='';if(idInput)idInput.value='';
+    updateHeader();saveState();renderBankLog();const bal=document.getElementById('bank-balance');if(bal)bal.innerText=fmt(state.coins);
+  }catch(e){console.warn(e);if(statusEl)statusEl.innerText='Ошибка перевода: '+safeText(e?.message||'сервер недоступен','сервер недоступен',80);}
 }
 async function claimBankTransfers(){
-  if(!sb || !onlineAuthReady) return;
+  if(!onlineAuthReady)return;
   try{
-    const {data,error} = await sb.from('bank_transfers').select('id,amount').eq('receiver_id', state.playerId).eq('claimed', false);
-    if(error || !data || !data.length) return;
-    if(!Array.isArray(state.claimedTransferIds)) state.claimedTransferIds=[];
-    let credited=0, total=0;
-    for(const row of data){
-      if(state.claimedTransferIds.includes(row.id)) continue;
-      const {data:claimed,error:claimError}=await sb.from('bank_transfers').update({claimed:true}).eq('id',row.id).eq('claimed',false).select('id,amount');
-      if(claimError || !claimed || !claimed.length) continue;
-      const amount=Number(row.amount)||0;
-      state.coins += amount;
-      state.claimedTransferIds.push(row.id);
-      credited++; total+=amount;
-    }
-    if(credited){ showToast(' Пришёл перевод: +'+fmt(total)+'  ('+credited+' шт.)'); updateHeader(); saveState(); }
-  }catch(e){ console.warn(e); }
+    const response=await serverFetch('/api/bank',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'claim'})});
+    const payload=await response.json().catch(()=>null);if(!response.ok)throw new Error(payload?.error||('bank claim rejected '+response.status));
+    const rows=Array.isArray(payload?.data?.claimed)?payload.data.claimed:[],amount=Number(payload?.data?.amount)||0;
+    if(!Array.isArray(state.claimedTransferIds))state.claimedTransferIds=[];
+    rows.forEach(r=>{if(!state.claimedTransferIds.includes(Number(r.id)))state.claimedTransferIds.push(Number(r.id));});
+    if(amount>0){state.coins+=amount;state.stats.totalEarned+=amount;showToast('Пришёл перевод: +'+fmt(amount)+' SYND');updateHeader();saveState();}
+  }catch(e){console.warn('bank claim',e);}
 }
 async function renderBankLog(){
-  const c=document.getElementById('bank-log'); if(!c || !sb) return;
+  const c=document.getElementById('bank-log');if(!c)return;
+  if(!onlineAuthReady&&!await ensureOnlineAuth()){c.innerHTML='<div class="empty-note">Войдите через Telegram Mini App</div>';return;}
   try{
-    const {data} = await sb.from('bank_transfers').select('*')
-      .or('sender_id.eq.'+state.playerId+',receiver_id.eq.'+state.playerId)
-      .order('id',{ascending:false}).limit(20);
-    c.innerHTML='';
-    if(!data || !data.length){ c.innerHTML='<div class="empty-note">Переводов пока не было</div>'; return; }
-    data.forEach(r=>{
-      const outgoing = r.sender_id===state.playerId;
-      c.innerHTML += '<div class="listing-card"><div class="listing-head">'+
-        '<span class="listing-name">'+(outgoing?'Отправлено → '+escapeHtml(r.receiver_id):'Получено ← '+escapeHtml(r.sender_name||r.sender_id))+'</span>'+
-        '<span class="listing-price" style="color:'+(outgoing?'var(--accent)':'var(--green)')+'">'+(outgoing?'-':'+')+fmt(r.amount)+' </span>'+
-        '</div></div>';
-    });
-  }catch(e){ console.warn(e); }
+    const response=await serverFetch('/api/bank',{credentials:'include',cache:'no-store'}),payload=await response.json().catch(()=>null);if(!response.ok)throw new Error(payload?.error||('bank history rejected '+response.status));
+    const data=Array.isArray(payload?.data)?payload.data:[];c.innerHTML='';
+    if(!data.length){c.innerHTML='<div class="empty-note">Переводов пока не было</div>';return;}
+    data.slice(0,20).forEach(r=>{const outgoing=r.sender_id===state.playerId;c.innerHTML+='<div class="listing-card"><div class="listing-head"><span class="listing-name">'+(outgoing?'Отправлено → '+escapeHtml(r.receiver_id):'Получено ← '+escapeHtml(r.sender_name||r.sender_id))+'</span><span class="listing-price" style="color:'+(outgoing?'var(--accent)':'var(--green)')+'">'+(outgoing?'-':'+')+fmt(r.amount)+' SYND</span></div></div>';});
+  }catch(e){console.warn(e);c.innerHTML='<div class="empty-note">История переводов временно недоступна</div>';}
 }
 
 /* ==================== PVP-ЗАЕЗДЫ С ИГРОКАМИ (асинхронные вызовы) ==================== */
 function openPvp(){
-  initSupabase();
   claimPvpResults();
   refreshPvpList();
 }
+async function pvpApi(method='GET',body=null){
+  if(!onlineAuthReady&&!await ensureOnlineAuth())throw new Error('Требуется вход через Telegram Mini App');
+  const opts={method,credentials:'include',cache:'no-store',headers:{}};
+  if(body!==null){opts.headers['Content-Type']='application/json';opts.body=JSON.stringify(body);}
+  const response=await serverFetch('/api/pvp',opts),payload=await response.json().catch(()=>null);
+  if(!response.ok)throw new Error(payload?.error||('pvp rejected '+response.status));
+  return payload;
+}
 async function refreshPvpList(){
   const c=document.getElementById('pvp-list'); if(!c) return;
-  if(!sb){ c.innerHTML='<div class="empty-note"> PvP недоступен (нет подключения)</div>'; return; }
   try{
-    const {data,error} = await sb.from('pvp_challenges').select('*').eq('status','open').order('id',{ascending:false}).limit(40);
-    if(error) throw error;
+    const payload=await pvpApi('GET'),data=Array.isArray(payload?.open)?payload.open:[];
     c.innerHTML='';
-    if(!data || !data.length){ c.innerHTML='<div class="empty-note">Открытых вызовов нет. Создай свой!</div>'; return; }
-    data.forEach(r=>{
-      const isMine = r.challenger_id===state.playerId;
-      c.innerHTML += '<div class="listing-card"><div class="listing-head"><span class="listing-name">'+escapeHtml(r.challenger_name||'Игрок')+'</span>'+(isMine?'<span class="mine-tag">Твой вызов</span>':'')+'</div>'+
-        '<div class="listing-meta">Мощность соперника: '+r.power+' л.с.</div>'+
-        '<div class="listing-head"><span class="listing-price">Ставка '+fmt(r.stake)+' </span>'+
-        (isMine
-          ? '<button class="sell-btn" onclick="cancelPvpChallenge('+r.id+')">Отменить</button>'
-          : '<button class="btn btn-buy" style="width:auto;padding:8px 14px;" onclick="acceptPvpChallenge('+r.id+')">ПРИНЯТЬ ВЫЗОВ</button>')+
-        '</div></div>';
-    });
-  }catch(e){ console.warn(e); c.innerHTML='<div class="empty-note"> Не удалось загрузить вызовы</div>'; }
+    if(!data.length){c.innerHTML='<div class="empty-note">Открытых вызовов нет. Создай свой!</div>';return;}
+    data.forEach(r=>{const isMine=r.challenger_id===state.playerId;c.innerHTML+='<div class="listing-card"><div class="listing-head"><span class="listing-name">'+escapeHtml(r.challenger_name||'Игрок')+'</span>'+(isMine?'<span class="mine-tag">Твой вызов</span>':'')+'</div><div class="listing-meta">Мощность соперника: '+r.power+' л.с.</div><div class="listing-head"><span class="listing-price">Ставка '+fmt(r.stake)+' SYND</span>'+(isMine?'<button class="sell-btn" onclick="cancelPvpChallenge('+r.id+')">Отменить</button>':'<button class="btn btn-buy" style="width:auto;padding:8px 14px;" onclick="acceptPvpChallenge('+r.id+')">ПРИНЯТЬ ВЫЗОВ</button>')+'</div></div>';});
+  }catch(e){console.warn(e);c.innerHTML='<div class="empty-note">Не удалось загрузить вызовы</div>';}
 }
 async function postPvpChallenge(){
-  if(!sb){ showToast('PvP недоступен'); return; }
-  if(!await requireOnlineWrite('PvP')) return;
-  const car = carsDB.find(c=>c.id===state.activeCarId);
-  const stakeInput=document.getElementById('pvp-stake-input');
-  const stake=parseInt(stakeInput.value,10);
-  if(!stake || stake<=0){ showToast('Укажи ставку'); return; }
-  if(stake>MAX_PVP_STAKE){showToast('Максимальная ставка: '+fmt(MAX_PVP_STAKE)+' SYND');return;}
-  if(stake>state.coins){ showToast('Недостаточно денег на ставку'); return; }
+  if(!await requireOnlineWrite('PvP'))return;
+  const car=carsDB.find(c=>c.id===state.activeCarId),stakeInput=document.getElementById('pvp-stake-input'),stake=parseInt(stakeInput?.value||'0',10);
+  if(!stake||stake<=0){showToast('Укажи ставку');return;}if(stake>MAX_PVP_STAKE){showToast('Максимальная ставка: '+fmt(MAX_PVP_STAKE)+' SYND');return;}if(stake>state.coins){showToast('Недостаточно денег на ставку');return;}
   try{
-    const {error} = await sb.from('pvp_challenges').insert({
-      challenger_id: state.playerId, challenger_name: state.playerName,
-      power: getEffectivePower(car), stake: stake, status:'open'
-    });
-    if(error) throw error;
-    state.coins -= stake; state.stats.totalSpent += stake;
-    showToast(' Вызов создан! Ставка '+fmt(stake)+'  заморожена до результата');
-    updateHeader(); saveState(); refreshPvpList();
-    stakeInput.value='';
-  }catch(e){ console.warn(e); showToast(' Не удалось создать вызов'); }
+    await pvpApi('POST',{action:'create',power:getEffectivePower(car),stake});
+    state.coins-=stake;state.stats.totalSpent+=stake;showToast('Вызов создан. Ставка '+fmt(stake)+' SYND заморожена');updateHeader();saveState();refreshPvpList();if(stakeInput)stakeInput.value='';
+  }catch(e){console.warn(e);showToast('Не удалось создать вызов');}
 }
 async function cancelPvpChallenge(id){
-  if(!sb) return;
-  if(!await requireOnlineWrite('PvP')) return;
-  try{
-    const {data,error} = await sb.from('pvp_challenges').select('*').eq('id',id).single();
-    if(error||!data) throw error||new Error('not found');
-    if(data.challenger_id!==state.playerId || data.status!=='open'){ showToast('Вызов недоступен'); refreshPvpList(); return; }
-    const {error:updErr} = await sb.from('pvp_challenges').update({status:'cancelled'}).eq('id',id).eq('status','open');
-    if(updErr) throw updErr;
-    state.coins += data.stake;
-    showToast('Вызов отменён, ставка возвращена');
-    updateHeader(); saveState(); refreshPvpList();
-  }catch(e){ console.warn(e); showToast(' Ошибка отмены'); }
+  if(!await requireOnlineWrite('PvP'))return;
+  try{const payload=await pvpApi('POST',{action:'cancel',id:Number(id)}),row=payload?.data;if(!row?.id)throw new Error('cancel rejected');state.coins+=Number(row.stake)||0;showToast('Вызов отменён, ставка возвращена');updateHeader();saveState();refreshPvpList();}catch(e){console.warn(e);showToast('Ошибка отмены');}
 }
 async function acceptPvpChallenge(id){
-  if(!sb) return;
-  if(!await requireOnlineWrite('PvP')) return;
+  if(!await requireOnlineWrite('PvP'))return;
   try{
-    const {data,error} = await sb.from('pvp_challenges').select('*').eq('id',id).eq('status','open').single();
-    if(error||!data){ showToast('Вызов уже принят другим игроком'); refreshPvpList(); return; }
-    if(data.challenger_id===state.playerId){ showToast('Нельзя принять свой же вызов'); return; }
-    if(state.coins<data.stake){ showToast('Недостаточно денег для ставки'); return; }
-    const {data:upd, error:updErr} = await sb.from('pvp_challenges')
-      .update({status:'racing', accepter_id: state.playerId, accepter_name: state.playerName})
-      .eq('id',id).eq('status','open').select();
-    if(updErr) throw updErr;
-    if(!upd || !upd.length){ showToast('Вызов уже приняли раньше вас'); refreshPvpList(); return; }
-    // ставка принимающего замораживается прямо в заезде (raceCtx.fee = stake)
-    prepareRace(upd[0], 'pvp');
-  }catch(e){ console.warn(e); showToast(' Не удалось принять вызов'); }
+    const view=await pvpApi('GET'),row=(Array.isArray(view?.open)?view.open:[]).find(r=>Number(r.id)===Number(id));if(!row){showToast('Вызов уже недоступен');refreshPvpList();return;}if(row.challenger_id===state.playerId){showToast('Нельзя принять свой вызов');return;}if(state.coins<Number(row.stake||0)){showToast('Недостаточно денег для ставки');return;}
+    const payload=await pvpApi('POST',{action:'accept',id:Number(id)}),accepted=payload?.data;if(!accepted?.id)throw new Error('accept rejected');prepareRace(accepted,'pvp');
+  }catch(e){console.warn(e);showToast('Не удалось принять вызов');}
 }
-async function resolvePvpChallenge(row, accepterWon, reward){
-  if(!sb || !row) return;
-  if(!await requireOnlineWrite('PvP')) return;
-  try{
-    await sb.from('pvp_challenges').update({
-      status:'resolved', winner_id: accepterWon ? state.playerId : row.challenger_id, resolved_at: new Date().toISOString()
-    }).eq('id', row.id);
-  }catch(e){ console.warn(e); }
+async function resolvePvpChallenge(row,accepterWon,reward){
+  if(!row||!await requireOnlineWrite('PvP'))return;
+  try{await pvpApi('POST',{action:'resolve',id:Number(row.id),winnerId:accepterWon?state.playerId:row.challenger_id});}catch(e){console.warn(e);}
 }
 async function claimPvpResults(){
-  if(!sb || !onlineAuthReady) return;
+  if(!onlineAuthReady)return;
   try{
-    const {data,error} = await sb.from('pvp_challenges').select('*').eq('challenger_id', state.playerId).eq('status','resolved');
-    if(error || !data || !data.length) return;
-    if(!Array.isArray(state.claimedPvpIds)) state.claimedPvpIds=[];
-    let msgCount=0;
+    const payload=await pvpApi('GET'),data=Array.isArray(payload?.resolved)?payload.resolved:[];
+    if(!Array.isArray(state.claimedPvpIds))state.claimedPvpIds=[];let changed=false;
     for(const row of data){
-      if(state.claimedPvpIds.includes(row.id)) continue;
-      const {data:settled,error:settleError}=await sb.from('pvp_challenges').update({status:'settled'}).eq('id',row.id).eq('status','resolved').select('id');
-      if(settleError || !settled || !settled.length) continue;
-      state.claimedPvpIds.push(row.id);
-      if(row.winner_id===state.playerId){
-        const winnings = (Number(row.stake)||0)*2;
-        state.coins += winnings; state.stats.totalEarned += winnings;
-        showToast(' Твой вызов принял '+(row.accepter_name||'игрок')+' — и ты выиграл +'+fmt(winnings)+' !');
-      } else {
-        showToast(' Твой вызов принял '+(row.accepter_name||'игрок')+' — и обыграл тебя. Ставка потеряна.');
-      }
-      msgCount++;
+      if(state.claimedPvpIds.includes(Number(row.id)))continue;
+      try{const settled=await pvpApi('POST',{action:'settle',id:Number(row.id)});if(!settled?.data?.id)continue;}catch(_){continue;}
+      state.claimedPvpIds.push(Number(row.id));
+      if(row.winner_id===state.playerId){const winnings=(Number(row.stake)||0)*2;state.coins+=winnings;state.stats.totalEarned+=winnings;showToast('Ты выиграл PvP: +'+fmt(winnings)+' SYND');}else showToast('Соперник выиграл PvP. Ставка потеряна.');
+      changed=true;
     }
-    if(msgCount){ updateHeader(); saveState(); }
-  }catch(e){ console.warn(e); }
+    if(changed){updateHeader();saveState();}
+  }catch(e){console.warn('pvp claim',e);}
 }
-
 
 
 /* ===== migrated from carbon_expansion_v8.js ===== */
@@ -2644,29 +2613,29 @@ async function claimPvpResults(){
   };
   stateSellPrice=function(car){return Math.max(50,Math.round((car.price+tuningInstalledValue(car.id)*.52+(activePlate(car.id)?.value||0)*.35)*(0.52+getCondition(car.id)/100*.18)));};
   async function marketApiV10(body){
-    const response=await fetch('/api/market',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}),payload=await response.json().catch(()=>null);
+    const response=await serverFetch('/api/market',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}),payload=await response.json().catch(()=>null);
     if(!response.ok)throw new Error(payload?.error||('market request rejected '+response.status));
     return payload?.data;
   }
   promptListCar=function(carId){const car=carsDB.find(c=>c.id===carId),snap=vehicleSnapshot(carId),suggested=Math.round((car.price+(snap?.tuningValue||0)*.72+(snap?.plate?.value||0)*.45)*.82)||100;const input=window.prompt('Цена за '+car.name+' вместе с тюнингом и установленным номером. Ориентир: '+fmt(suggested),suggested);if(input===null)return;const price=parseInt(input,10);if(!price||price<=0||price>MAX_MARKET_PRICE){showToast('Цена должна быть от 1 до '+fmt(MAX_MARKET_PRICE)+' SYND');return;}listCarForSale(carId,price);};
   listCarForSale=async function(carId,price){
-    if(!sb){showToast('Рынок недоступен');return;}if(!await requireOnlineWrite('Рынок'))return;if(!state.ownedCars.includes(carId)||state.ownedCars.length<=1)return;price=Math.trunc(Number(price));if(!Number.isFinite(price)||price<1||price>MAX_MARKET_PRICE)return;const car=carsDB.find(c=>c.id===carId),snapshot=vehicleSnapshot(carId);
+    if(!await requireOnlineWrite('Рынок'))return;if(!state.ownedCars.includes(carId)||state.ownedCars.length<=1)return;price=Math.trunc(Number(price));if(!Number.isFinite(price)||price<1||price>MAX_MARKET_PRICE)return;const car=carsDB.find(c=>c.id===carId),snapshot=vehicleSnapshot(carId);
     try{const data=await marketApiV10({action:'list',price,vehicle:snapshot});if(!data?.id)throw new Error('listing id missing');state.marketEscrow[String(data.id)]=snapshot;state.ownedCars=state.ownedCars.filter(id=>id!==carId);if(snapshot?.plate){state.plateInventory=state.plateInventory.filter(p=>p.uid!==snapshot.plate.uid);Object.keys(state.installedPlates||{}).forEach(k=>{if(state.installedPlates[k]===snapshot.plate.uid)delete state.installedPlates[k];});}delete state.upgrades[carId];delete state.fuel[carId];delete state.condition[carId];delete state.tuningHistory[carId];if(state.activeCarId===carId)state.activeCarId=state.ownedCars[0];showToast(car.name+' выставлена вместе с тюнингом');updateHeader();saveState();refreshMarket();renderSellPicker();}catch(e){console.warn(e);showToast('Не удалось выставить лот');}
   };
   cancelListing=async function(id){
-    if(!sb||!await requireOnlineWrite('Рынок'))return;try{const {data,error}=await sb.from('market_cars').select('*').eq('id',id).single();if(error||!data)throw error||new Error('not found');if(data.seller_id!==state.playerId||data.status!=='active'){showToast('Лот недоступен');return;}const cancelled=await marketApiV10({action:'cancel',listingId:Number(id)});const snap=marketVehicleFromRow(cancelled||data)||state.marketEscrow[String(id)];applyVehicleSnapshot(snap);delete state.marketEscrow[String(id)];showToast('Машина и её сборка возвращены в гараж');saveState();refreshMarket();}catch(e){console.warn(e);showToast('Ошибка снятия лота');}
+    if(!await requireOnlineWrite('Рынок'))return;try{const rr=await serverFetch('/api/market?id='+encodeURIComponent(String(id)),{credentials:'include',cache:'no-store'}),pp=await rr.json().catch(()=>null),data=pp?.data;if(!rr.ok||!data)throw new Error(pp?.error||'not found');if(data.seller_id!==state.playerId||data.status!=='active'){showToast('Лот недоступен');return;}const cancelled=await marketApiV10({action:'cancel',listingId:Number(id)});const snap=marketVehicleFromRow(cancelled||data)||state.marketEscrow[String(id)];applyVehicleSnapshot(snap);delete state.marketEscrow[String(id)];showToast('Машина и её сборка возвращены в гараж');saveState();refreshMarket();}catch(e){console.warn(e);showToast('Ошибка снятия лота');}
   };
   buyListing=async function(id){
-    if(!sb||!await requireOnlineWrite('Рынок'))return;try{const {data,error}=await sb.from('market_cars').select('*').eq('id',id).eq('status','active').single();if(error||!data){showToast('Лот уже недоступен');refreshMarket();return;}if(data.seller_id===state.playerId)return;const snap=marketVehicleFromRow(data),carId=Number(snap.carId||data.car_id);if(state.ownedCars.includes(carId)||escrowCarIds().has(carId)){showToast('Такая модель уже есть в гараже или находится в вашем лоте');return;}if(state.coins<data.price){showToast('Недостаточно SYND');return;}const sold=await marketApiV10({action:'buy',listingId:Number(id)});if(!sold?.id)throw new Error('listing was not sold');state.coins-=data.price;state.stats.totalSpent+=data.price;applyVehicleSnapshot(snap);showToast('Куплено: машина, тюнинг и установленный номер');updateHeader();saveState();refreshMarket();}catch(e){console.warn(e);showToast('Не удалось купить лот');}
+    if(!await requireOnlineWrite('Рынок'))return;try{const rr=await serverFetch('/api/market?id='+encodeURIComponent(String(id)),{credentials:'include',cache:'no-store'}),pp=await rr.json().catch(()=>null),data=pp?.data;if(!rr.ok||!data||data.status!=='active'){showToast('Лот уже недоступен');refreshMarket();return;}if(data.seller_id===state.playerId)return;const snap=marketVehicleFromRow(data),carId=Number(snap.carId||data.car_id);if(state.ownedCars.includes(carId)||escrowCarIds().has(carId)){showToast('Такая модель уже есть в гараже или находится в вашем лоте');return;}if(state.coins<data.price){showToast('Недостаточно SYND');return;}const sold=await marketApiV10({action:'buy',listingId:Number(id)});if(!sold?.id)throw new Error('listing was not sold');state.coins-=data.price;state.stats.totalSpent+=data.price;applyVehicleSnapshot(snap);showToast('Куплено: машина, тюнинг и установленный номер');updateHeader();saveState();refreshMarket();}catch(e){console.warn(e);showToast('Не удалось купить лот');}
   };
   sellToState=function(carId){if(!state.ownedCars.includes(carId)||state.ownedCars.length<=1)return;const car=carsDB.find(c=>c.id===carId),price=stateSellPrice(car);if(!confirm('Продать '+car.name+' государству за '+fmt(price)+' SYND? Установленный тюнинг и номер уйдут вместе с машиной.'))return;state.coins+=price;state.stats.totalEarned+=price;state.ownedCars=state.ownedCars.filter(id=>id!==carId);if(state.activeCarId===carId)state.activeCarId=state.ownedCars[0];const uid=state.installedPlates[String(carId)];if(uid)state.plateInventory=state.plateInventory.filter(p=>p.uid!==uid);delete state.installedPlates[String(carId)];delete state.upgrades[carId];delete state.fuel[carId];delete state.condition[carId];delete state.tuningHistory[carId];showToast('Машина продана вместе со сборкой');updateHeader();saveState();renderSellPicker();};
 
   async function reconcileMarketEscrow(){
-    if(!sb||!onlineAuthReady||!state.playerId)return;
+    if(!onlineAuthReady||!state.playerId)return;
     try{
-      const {data,error}=await sb.from('market_cars').select('*').eq('seller_id',state.playerId).eq('status','active');if(error)throw error;
-      let changed=false;
-      for(const row of (data||[])){
+      const response=await serverFetch('/api/market?scope=mine',{credentials:'include',cache:'no-store'}),payload=await response.json().catch(()=>null);if(!response.ok)throw new Error(payload?.error||('market mine rejected '+response.status));
+      const data=(Array.isArray(payload?.data)?payload.data:[]).filter(r=>r.status==='active');let changed=false;
+      for(const row of data){
         const key=String(row.id),snap=marketVehicleFromRow(row),carId=Number(snap.carId||row.car_id);
         if(!state.marketEscrow[key]){state.marketEscrow[key]=snap;changed=true;}
         if(state.ownedCars.includes(carId)){
@@ -2689,26 +2658,43 @@ async function claimPvpResults(){
   };
 
   /* ---------- REFERRALS ---------- */
+  async function referralApi(method='GET',body=null){
+    const opts={method,credentials:'include',cache:'no-store',headers:{}};
+    if(body!==null){opts.headers['Content-Type']='application/json';opts.body=JSON.stringify(body);}
+    const response=await serverFetch('/api/referrals',opts),payload=await response.json().catch(()=>null);
+    if(!response.ok)throw new Error(payload?.error||('referral request rejected '+response.status));
+    return payload;
+  }
   async function initReferralSystem(){
-    if(!sb||!onlineAuthReady)return;try{const ref=new URLSearchParams(location.search).get('ref');if(ref&&!state.referral.bound){const {data,error}=await sb.rpc('autosyndicate_bind_referrer',{p_referral_code:safeText(ref,'',20).toUpperCase()});if(!error&&data){const row=Array.isArray(data)?data[0]:data,bonus=Number(row?.invitee_bonus)||0;if(bonus>0&&!state.referral.startBonusClaimed){state.coins+=bonus;state.stats.totalEarned+=bonus;state.referral.startBonusClaimed=true;showToast('Реферальный стартовый бонус: +'+fmt(bonus)+' SYND');}state.referral.bound=!!row?.bound;saveState();}}
+    if(!onlineAuthReady)return;
+    try{
+      const ref=new URLSearchParams(location.search).get('ref');
+      if(ref&&!state.referral.bound){
+        const payload=await referralApi('POST',{action:'bind',code:safeText(ref,'',20).toUpperCase()}),row=payload?.data||{},bonus=Number(row?.invitee_bonus)||0;
+        if(bonus>0&&!state.referral.startBonusClaimed){state.coins+=bonus;state.stats.totalEarned+=bonus;state.referral.startBonusClaimed=true;showToast('Реферальный стартовый бонус: +'+fmt(bonus)+' SYND');}
+        state.referral.bound=!!row?.bound;saveState();
+      }
       await refreshReferralDashboard();await claimReferralRewards();
     }catch(e){console.warn('referral init',e);}
   }
   async function refreshReferralDashboard(){
-    if(!sb||!onlineAuthReady)return;try{const {data,error}=await sb.rpc('autosyndicate_referral_dashboard');if(error||!data)return;const r=Array.isArray(data)?data[0]:data;if(!r)return;state.referral.code=safeText(r.referral_code,'',20);state.referral.bound=!!r.has_referrer;state.referral.invites=Number(r.invites)||0;state.referral.earned=Number(r.total_earned)||0;saveState();if(document.getElementById('screen-referrals')?.classList.contains('active'))renderReferrals();}catch(e){console.warn(e);}
+    if(!onlineAuthReady)return;
+    try{const payload=await referralApi('GET'),r=payload?.data;if(!r)return;state.referral.code=safeText(r.referral_code,'',20);state.referral.bound=!!r.has_referrer;state.referral.invites=Number(r.invites)||0;state.referral.earned=Number(r.total_earned)||0;saveState();if(document.getElementById('screen-referrals')?.classList.contains('active'))renderReferrals();}catch(e){console.warn(e);}
   }
   async function claimReferralRewards(){
-    if(!sb||!onlineAuthReady)return 0;try{const {data,error}=await sb.rpc('autosyndicate_claim_referral_rewards');if(error)return 0;const amount=Number(Array.isArray(data)?data[0]?.amount:data?.amount)||Number(data)||0;if(amount>0){state.coins+=amount;state.stats.totalEarned+=amount;state.referral.totalClaimed=(state.referral.totalClaimed||0)+amount;showToast('Доход от рефералов: +'+fmt(amount)+' SYND');updateHeader();saveState();return amount;}}catch(e){console.warn(e);}return 0;
+    if(!onlineAuthReady)return 0;
+    try{const payload=await referralApi('POST',{action:'claim'}),amount=Number(payload?.amount)||0;if(amount>0){state.coins+=amount;state.stats.totalEarned+=amount;state.referral.totalClaimed=(state.referral.totalClaimed||0)+amount;showToast('Доход от рефералов: +'+fmt(amount)+' SYND');updateHeader();saveState();return amount;}}catch(e){console.warn(e);}return 0;
   }
   async function claimFirstRaceReferralBonus(){
-    if(!sb||!onlineAuthReady||state.referral.firstRaceBonusClaimed||state.stats.races<1)return;try{const {data,error}=await sb.rpc('autosyndicate_claim_first_race_bonus');if(error)return;const amount=Number(Array.isArray(data)?data[0]?.bonus:data?.bonus)||Number(data)||0;if(amount>0){state.coins+=amount;state.stats.totalEarned+=amount;state.referral.firstRaceBonusClaimed=true;showToast('Подарок за первую гонку: +'+fmt(amount)+' SYND');updateHeader();saveState();}}catch(e){console.warn(e);}
+    if(!onlineAuthReady||state.referral.firstRaceBonusClaimed||state.stats.races<1)return;
+    try{const payload=await referralApi('POST',{action:'firstRace'}),amount=Number(payload?.amount)||0;if(amount>0){state.coins+=amount;state.stats.totalEarned+=amount;state.referral.firstRaceBonusClaimed=true;showToast('Подарок за первую гонку: +'+fmt(amount)+' SYND');updateHeader();saveState();}}catch(e){console.warn(e);}
   }
   window.refreshReferralDashboard=refreshReferralDashboard;window.claimReferralRewards=claimReferralRewards;window.claimFirstRaceReferralBonus=claimFirstRaceReferralBonus;
   window.copyReferralLink=async function(){const code=state.referral.code;if(!code)return;const link=location.origin+location.pathname+'?ref='+encodeURIComponent(code);try{await navigator.clipboard.writeText(link);showToast('Реферальная ссылка скопирована');}catch(_){window.prompt('Скопируйте ссылку',link);}};
-  window.renderReferrals=function(){ensureV8Screens();const root=document.getElementById('referral-content');if(!root)return;const code=state.referral.code||'СИНХРОНИЗАЦИЯ',link=state.referral.code?(location.origin+location.pathname+'?ref='+state.referral.code):'—';root.innerHTML='<div class="referral-hero"><div class="referral-code"><span>ВАШ КОД</span><b>'+escapeHtml(code)+'</b><button onclick="copyReferralLink()">'+svgIcon('copy')+' КОПИРОВАТЬ ССЫЛКУ</button></div><div class="referral-stats"><div><span>Приглашено</span><b>'+fmt(state.referral.invites||0)+'</b></div><div><span>Начислено</span><b>'+fmt(state.referral.earned||0)+' SYND</b></div><div><span>Получено</span><b>'+fmt(state.referral.totalClaimed||0)+' SYND</b></div></div></div><div class="referral-rules"><div class="v8-section-head"><b>КАК РАБОТАЕТ</b><span>5% от заработка</span></div><div class="rule-row"><b>Приглашённый</b><span>Стартовый бонус и отдельный подарок после первой завершённой гонки.</span></div><div class="rule-row"><b>Пригласивший</b><span>Получает 5% от роста подтверждённого серверного total_earned реферала.</span></div><div class="rule-row"><b>Защита</b><span>Самореферал запрещён. Реферер привязывается один раз и не меняется. Начисления хранятся в БД и выдаются идемпотентно.</span></div></div><div class="referral-link-preview">'+escapeHtml(link)+'</div><button class="btn btn-select" onclick="claimReferralRewards();refreshReferralDashboard()">ПРОВЕРИТЬ НАЧИСЛЕНИЯ</button>';
+  window.renderReferrals=function(){ensureV8Screens();const root=document.getElementById('referral-content');if(!root)return;const code=state.referral.code||'СИНХРОНИЗАЦИЯ',link=state.referral.code?(location.origin+location.pathname+'?ref='+state.referral.code):'—';root.innerHTML='<div class="referral-hero"><div class="referral-code"><span>ВАШ КОД</span><b>'+escapeHtml(code)+'</b><button onclick="copyReferralLink()">'+svgIcon('copy')+' КОПИРОВАТЬ ССЫЛКУ</button></div><div class="referral-stats"><div><span>Приглашено</span><b>'+fmt(state.referral.invites||0)+'</b></div><div><span>Начислено</span><b>'+fmt(state.referral.earned||0)+' SYND</b></div><div><span>Получено</span><b>'+fmt(state.referral.totalClaimed||0)+' SYND</b></div></div></div><div class="referral-rules"><div class="v8-section-head"><b>КАК РАБОТАЕТ</b><span>5% от заработка</span></div><div class="rule-row"><b>Приглашённый</b><span>Стартовый бонус и отдельный подарок после первой завершённой гонки.</span></div><div class="rule-row"><b>Пригласивший</b><span>Получает 5% от подтверждённого сервером заработка реферала.</span></div><div class="rule-row"><b>Защита</b><span>Самореферал запрещён. Реферер привязывается один раз. Начисления хранятся в БД.</span></div></div><div class="referral-link-preview">'+escapeHtml(link)+'</div><button class="btn btn-select" onclick="claimReferralRewards();refreshReferralDashboard()">ПРОВЕРИТЬ НАЧИСЛЕНИЯ</button>';
   };
-  const basePoll=pollBackgroundClaims;pollBackgroundClaims=function(){basePoll();claimReferralRewards();};
-  const baseBootstrap=bootstrapOnline;bootstrapOnline=async function(){await baseBootstrap();await reconcileMarketEscrow();await syncPlayerProfile(true);await initReferralSystem();};
+  const basePoll=pollBackgroundClaims;pollBackgroundClaims=function(){basePoll();if(onlineAuthReady)claimReferralRewards();};
+  const baseBootstrap=bootstrapOnline;bootstrapOnline=async function(){await baseBootstrap();if(onlineAuthReady){await reconcileMarketEscrow();await syncPlayerProfile(true);await initReferralSystem();}};
 
   /* ---------- UI SCREENS / ICONS ---------- */
   function ensureCaseModalRoot(){ensureCaseModal();}
@@ -3054,12 +3040,14 @@ async function claimPvpResults(){
     state.caseHistory.push({ts:Date.now(),caseId:cs.id,label:prize.label,rarity:prize.rarity,type:prize.type});state.caseHistory=state.caseHistory.slice(-60);
     updateHeader();saveState();checkAchievements();return true;
   }
-  async function markCaseClaimed(rollId){try{if(!onlineAuthReady)return false;const r=await fetch('/api/cases/claim',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({rollId:String(rollId)})});if(!r.ok)throw new Error('claim rejected '+r.status);const body=await r.json().catch(()=>null);return body?.claimed===true;}catch(e){console.warn('case claim mark',e);return false;}}
+  async function markCaseClaimed(rollId){try{if(!onlineAuthReady)return false;const r=await serverFetch('/api/cases/claim',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({rollId:String(rollId)})});if(!r.ok)throw new Error('claim rejected '+r.status);const body=await r.json().catch(()=>null);return body?.claimed===true;}catch(e){console.warn('case claim mark',e);return false;}}
   async function reconcileCaseRolls(){
-    if(state.caseOpening||!sb||!onlineAuthReady)return;
+    if(state.caseOpening||!onlineAuthReady)return;
     try{
-      const {data,error}=await sb.from('case_rolls').select('id,case_id,price,prize,created_at').is('claimed_at',null).order('created_at',{ascending:true}).limit(8);if(error)throw error;
-      for(const row of data||[]){
+      const response=await serverFetch('/api/cases/pending',{credentials:'include',cache:'no-store'}),payload=await response.json().catch(()=>null);
+      if(!response.ok)throw new Error(payload?.error||('pending cases rejected '+response.status));
+      const data=Array.isArray(payload?.data)?payload.data:[];
+      for(const row of data){
         if(state.caseAppliedRolls.includes(String(row.id))){await markCaseClaimed(row.id);continue;}
         const price=intNumber(row.price,0,0,100000),cs=CASES_V9[row.case_id];if(!cs)continue;
         if(state.coins<price)continue;
@@ -3080,7 +3068,7 @@ async function claimPvpResults(){
     if(!await requireOnlineWrite('Кейсы'))return;
     state.caseOpening=true;renderCases();
     try{
-      const response=await fetch('/api/cases/roll',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({caseId,context:caseContext()})});
+      const response=await serverFetch('/api/cases/roll',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({caseId,context:caseContext()})});
       const apiPayload=await response.json().catch(()=>null);if(!response.ok)throw new Error(apiPayload?.error||('server roll rejected '+response.status));
       const payload=apiPayload;const rollId=String(payload?.roll_id||payload?.id||''),prize=normalizeServerPrize(payload?.prize||{}),price=intNumber(payload?.price,cs.price,1,100000);
       if(!rollId)throw new Error('server roll id missing');if(state.coins<price)throw new Error('Недостаточно SYND для подтверждения server roll');
@@ -3135,10 +3123,10 @@ async function claimPvpResults(){
     const p=v8PlayerProfilePayload(),car=activeCar();return {...p,telegram_username:state.playerUsername||null,best_0_100:state.stats.best0100||null,current_car_name:car?.name||null,rating:playerRating()};
   };
   loadPlayerLeaderboard=async function(){
-    if(!sb)return[];try{const {data,error}=await sb.from('player_profiles').select('id,name,photo_url,telegram_username,level,balance,xp,races,wins,losses,total_earned,owned_cars,active_car_id,current_car_name,best_0_100,rating,last_seen').order('rating',{ascending:false}).order('wins',{ascending:false}).limit(200);if(error)throw error;return data||[];}catch(e){console.warn('player leaderboard',e);return[];}
+    try{if(!onlineAuthReady&&!await ensureOnlineAuth())return[];const response=await serverFetch('/api/profile/players',{credentials:'include',cache:'no-store'}),payload=await response.json().catch(()=>null);if(!response.ok)throw new Error(payload?.error||('request rejected '+response.status));return Array.isArray(payload?.players)?payload.players:[];}catch(e){console.warn('player leaderboard',e);return[];}
   };
   openPublicProfileByName=async function(name){
-    if(!sb){showToast('Профиль недоступен без подключения');return;}try{const clean=safeText(name,'',48);if(!clean)return;const {data,error}=await sb.from('player_profiles').select('id,name,photo_url,telegram_username,level,balance,xp,races,wins,losses,total_earned,owned_cars,active_car_id,current_car_name,best_0_100,rating,last_seen').eq('name',clean).order('last_seen',{ascending:false}).limit(1).maybeSingle();if(error)throw error;if(data)openPublicProfileData(data);else showToast('Профиль игрока не найден');}catch(e){console.warn(e);showToast('Не удалось загрузить профиль');}
+    try{if(!onlineAuthReady&&!await ensureOnlineAuth()){showToast('Профиль доступен после входа через Telegram');return;}const clean=safeText(name,'',48);if(!clean)return;const response=await serverFetch('/api/profile/players?q='+encodeURIComponent(clean),{credentials:'include',cache:'no-store'}),payload=await response.json().catch(()=>null);if(!response.ok)throw new Error(payload?.error||('request rejected '+response.status));if(payload?.player)openPublicProfileData(payload.player);else showToast('Профиль игрока не найден');}catch(e){console.warn(e);showToast('Не удалось загрузить профиль');}
   };
   openPublicProfile=function(name,val,wins,races,cars,profile){
     const root=document.getElementById('public-profile-root');if(!root)return;const p=profile||{},wr=races?Math.round(wins/races*100):0,list=Array.isArray(cars)?cars:[].concat(cars||[]).filter(Boolean),ownedHtml=list.length?list.map(x=>'<span class="player-lb-car">'+escapeHtml(x)+'</span>').join(''):'<span class="muted-v9">Нет данных</span>',balance=Number(p.balance??val)||0,level=Number(p.level)||1,best=Number(p.best_0_100)||0,rating=Number(p.rating)||0,current=safeText(p.current_car_name,'',60)||carsDB.find(c=>String(c.id)===String(p.active_car_id))?.name||'Не указана',username=safeText(p.telegram_username,'',32),isSelf=p.id===state.playerId;
@@ -3153,11 +3141,16 @@ async function claimPvpResults(){
   }
   let clanRankMode='global',currentClanDivision='Мантика';
   async function socialApi(path,method='GET',body=null,feature='Социальные функции'){
-    if(!await requireOnlineWrite(feature))throw new Error('secure Telegram auth unavailable');
-    const opts={method,credentials:'include',headers:{}};
+    if(!onlineAuthReady&&!await ensureOnlineAuth()&&!await recoverServerSession())throw new Error('Требуется запуск через Telegram Mini App');
+    if(method!=='GET')void syncPlayerProfile(true);
+    const opts={method,credentials:'include',cache:'no-store',headers:{}};
     if(body!==null){opts.headers['Content-Type']='application/json';opts.body=JSON.stringify(body);}
-    const response=await fetch(path,opts),payload=await response.json().catch(()=>null);
-    if(!response.ok)throw new Error(payload?.error||('request rejected '+response.status));
+    const response=await serverFetch(path,opts),payload=await response.json().catch(()=>null);
+    if(!response.ok){
+      const raw=String(payload?.error||'');
+      const human=raw==='unauthorized'?'Сессия истекла. Перезапусти Mini App':raw==='player banned'?'Аккаунт заблокирован':raw||('Сервер отклонил запрос '+response.status);
+      throw new Error(human);
+    }
     return payload;
   }
 
@@ -3169,7 +3162,7 @@ async function claimPvpResults(){
     const root=document.getElementById('friends-content-v9');if(!root)return;root.innerHTML='<div class="empty-note">Загрузка...</div>';
     try{const payload=await socialApi('/api/social/friends','GET',null,'Друзья');const rows=Array.isArray(payload?.data)?payload.data:[],incoming=rows.filter(x=>x.status==='pending'&&x.recipient_id===state.playerId),accepted=rows.filter(x=>x.status==='accepted'),outgoing=rows.filter(x=>x.status==='pending'&&x.requester_id===state.playerId);root.innerHTML='<div class="v9-section-head"><b>ДРУЗЬЯ</b><span>'+accepted.length+'</span></div>'+friendRows(accepted,'accepted')+'<div class="v9-section-head"><b>ВХОДЯЩИЕ</b><span>'+incoming.length+'</span></div>'+friendRows(incoming,'incoming')+'<div class="v9-section-head"><b>ИСХОДЯЩИЕ</b><span>'+outgoing.length+'</span></div>'+friendRows(outgoing,'outgoing');}catch(e){root.innerHTML='<div class="empty-note">Не удалось загрузить друзей: '+escapeHtml(e.message)+'</div>';}
   }
-  function friendRows(rows,mode){if(!rows.length)return'<div class="empty-note compact-v9">Нет записей</div>';return rows.map(r=>{const other=r.requester_id===state.playerId?{id:r.recipient_id,name:r.recipient_name}:{id:r.requester_id,name:r.requester_name};return '<div class="social-row-v9"><div><b>'+escapeHtml(other.name||other.id)+'</b><span>'+escapeHtml(other.id)+'</span></div><div class="social-actions-v9">'+(mode==='incoming'?'<button class="btn btn-select" onclick="acceptFriendRequest('+r.id+')">ПРИНЯТЬ</button>':'')+(mode!=='outgoing'?'<button class="btn btn-ghost" onclick="removeFriend('+r.id+')">'+(mode==='accepted'?'УДАЛИТЬ':'ОТКЛОНИТЬ')+'</button>':'<span class="pending-v9">ОЖИДАНИЕ</span>')+'</div></div>';}).join('');}
+  function friendRows(rows,mode){if(!rows.length)return'<div class="empty-note compact-v9">Нет записей</div>';return rows.map(r=>{const fallback=r.requester_id===state.playerId?{id:r.recipient_id,name:r.recipient_name}:{id:r.requester_id,name:r.requester_name};const p=r.other_profile||fallback,username=p?.telegram_username?'@'+p.telegram_username:'',meta=[p?.id||fallback.id,username,p?.current_car_name||'',p?.rating?('RATING '+p.rating):''].filter(Boolean).join(' · '),online=r.other_online===true;return '<div class="social-row-v9"><div class="friend-main-v12"><b><i class="friend-online-v12 '+(online?'on':'')+'"></i>'+escapeHtml(p?.name||fallback.name||fallback.id)+'</b><span>'+escapeHtml(meta)+'</span></div><div class="social-actions-v9">'+(mode==='accepted'?'<button class="btn btn-ghost" onclick="openPublicProfileByName('+jsArg(p?.id||fallback.id)+')">ПРОФИЛЬ</button>':'')+(mode==='incoming'?'<button class="btn btn-select" onclick="acceptFriendRequest('+r.id+')">ПРИНЯТЬ</button>':'')+(mode!=='outgoing'?'<button class="btn btn-ghost" onclick="removeFriend('+r.id+')">'+(mode==='accepted'?'УДАЛИТЬ':'ОТКЛОНИТЬ')+'</button>':'<span class="pending-v9">ОЖИДАНИЕ</span>')+'</div></div>';}).join('');}
 
   let clanLeaderboardCache=[];
   const relationOne=(value)=>Array.isArray(value)?(value[0]||{}):(value||{});
@@ -3194,10 +3187,18 @@ async function claimPvpResults(){
     const root=document.getElementById('clan-leaderboard-v9');if(!root)return;try{const rows=(clanRankMode==='division'?clanLeaderboardCache.filter(r=>r.division===currentClanDivision):clanLeaderboardCache).slice(0,100);root.innerHTML=rows.length?'<div class="clan-table-v9"><div class="clan-table-row-v9 head"><span>#</span><b>КЛАН</b><span>ЛИГА</span><span>СОСТАВ</span><span>PTS</span></div>'+rows.map((r,i)=>'<div class="clan-table-row-v9"><span>'+(clanRankMode==='global'?(r.global_rank||i+1):(r.division_rank||i+1))+'</span><b>'+escapeHtml(r.name)+'</b><span>'+escapeHtml(r.division)+'</span><span>'+r.members+'</span><strong>'+fmt(r.score)+'</strong></div>').join('')+'</div>':'<div class="empty-note">В этом рейтинге пока нет кланов.</div>';}catch(e){root.innerHTML='<div class="empty-note">Рейтинг недоступен: '+escapeHtml(e.message)+'</div>';}
   }
 
+  window.retryServerSync=async function(){
+    onlineAuthReady=false;serverReachable=true;
+    const ok=await ensureOnlineAuth()||await recoverServerSession();
+    if(ok){const schemaOk=await checkServerSync();await syncPlayerProfile(true);showToast(schemaOk?'Сервер синхронизирован':'Подключение есть, но требуется schema_v12.sql');}
+    else showToast('Не удалось восстановить Telegram-сессию');
+    renderProfile();
+  };
   const v8RenderProfile=renderProfile;
   renderProfile=function(){
     v8RenderProfile();ensureV9Screens();const grid=document.querySelector('#screen-profile .hub-grid');if(grid&&!document.getElementById('hub-friends-v9')){const a=document.createElement('div');a.className='hub-card';a.id='hub-friends-v9';a.onclick=()=>switchTab('friends');a.innerHTML='<div class="ic">'+svgIcon('users')+'</div><div class="lbl">Друзья</div><div class="sub">ID и Telegram login</div>';grid.appendChild(a);const b=document.createElement('div');b.className='hub-card';b.id='hub-clans-v9';b.onclick=()=>switchTab('clans');b.innerHTML='<div class="ic">'+svgIcon('shield')+'</div><div class="lbl">Кланы</div><div class="sub">Состав и рейтинг</div>';grid.appendChild(b);}
     const hero=document.querySelector('#screen-profile .profile-hero');if(hero&&!document.getElementById('profile-race-stats-v9')){const car=activeCar(),box=document.createElement('div');box.id='profile-race-stats-v9';box.className='profile-race-stats-v9';box.innerHTML='<span>RATING <b>'+playerRating()+'</b></span><span>0–100 <b>'+(state.stats.best0100?state.stats.best0100.toFixed(2)+' s':'—')+'</b></span><span>МАШИНА <b>'+escapeHtml(car?.name||'—')+'</b></span>';hero.appendChild(box);}
+    if(hero){let sync=document.getElementById('server-sync-v12');if(!sync){sync=document.createElement('div');sync.id='server-sync-v12';sync.className='server-sync-v12';hero.appendChild(sync);}const connected=onlineAuthReady&&serverReachable,needsMigration=connected&&serverSchemaVersion>=0&&serverSchemaVersion<12;const title=needsMigration?'ТРЕБУЕТСЯ MIGRATION V12':(connected?'СЕРВЕР ПОДКЛЮЧЕН':(!serverReachable?'СЕРВЕР НЕДОСТУПЕН':'СЕРВЕР НЕ СИНХРОНИЗИРОВАН'));const detail=needsMigration?'Выполни supabase/schema_v12.sql':(connected?escapeHtml(state.playerId||'Telegram session'):(!serverReachable?'Проверь соединение и повтори синхронизацию':'Открой игру через Telegram Mini App или повтори подключение'));sync.innerHTML='<span class="sync-dot-v12 '+(connected&&!needsMigration?'on':'off')+'"></span><div><b>'+title+'</b><small>'+detail+'</small></div>'+((!connected||needsMigration)?'<button onclick="retryServerSync()">ПОВТОРИТЬ</button>':'');}
   };
 
   const v8SwitchTab=switchTab;
@@ -3380,6 +3381,9 @@ if (typeof window !== 'undefined') {
   try { (window as any)['buyBackLicense'] = buyBackLicense; } catch {}
   try { (window as any)['initSupabase'] = initSupabase; } catch {}
   try { (window as any)['ensureOnlineAuth'] = ensureOnlineAuth; } catch {}
+  try { (window as any)['recoverServerSession'] = recoverServerSession; } catch {}
+  try { (window as any)['checkServerSync'] = checkServerSync; } catch {}
+  try { (window as any)['serverFetch'] = serverFetch; } catch {}
   try { (window as any)['bootstrapOnline'] = bootstrapOnline; } catch {}
   try { (window as any)['requireOnlineWrite'] = requireOnlineWrite; } catch {}
   try { (window as any)['pollBackgroundClaims'] = pollBackgroundClaims; } catch {}
@@ -3421,3 +3425,115 @@ if (typeof window !== 'undefined') {
   try { (window as any)['resolvePvpChallenge'] = resolvePvpChallenge; } catch {}
   try { (window as any)['claimPvpResults'] = claimPvpResults; } catch {}
 }
+
+/* ==================== v11 CONTENT + DUEL NETWORK ==================== */
+(() => {
+  const bootstrap=(window as any).__AUTOSYNDICATE_CONTENT__ || {};
+  if(Array.isArray(bootstrap.cars) && bootstrap.cars.length){
+    const normalized=bootstrap.cars.filter((c:any)=>c&&Number.isInteger(Number(c.id))).map((c:any)=>({
+      id:Number(c.id),name:String(c.name||`CAR ${c.id}`),image:c.image?String(c.image):null,price:Number(c.price)||0,power:Number(c.power)||100,
+      tier:String(c.tier||'Street'),cat:String(c.cat||'street'),flavor:String(c.flavor||'')
+    }));
+    carsDB.splice(0,carsDB.length,...normalized);
+    const activeIds=new Set(carsDB.map((c:any)=>Number(c.id)));
+    state.ownedCars=(state.ownedCars||[]).filter((id:any)=>activeIds.has(Number(id)));
+    if(!state.ownedCars.length && carsDB[0]) state.ownedCars=[carsDB[0].id];
+    if(!state.ownedCars.includes(state.activeCarId)) state.activeCarId=state.ownedCars[0];
+    saveState();
+  }
+  if(Array.isArray(bootstrap.opponents) && bootstrap.opponents.length){
+    opponentsDB.splice(0,opponentsDB.length,...bootstrap.opponents.map((o:any)=>({
+      id:o.id,name:String(o.name||'Соперник'),power:Number(o.power)||200,reward:Number(o.reward)||0,unlockLevel:Number(o.unlockLevel)||1,
+      car:String(o.car||'Street build'),rating:Number(o.rating)||50,style:String(o.style||'Сбалансированный'),favoriteTracks:Array.isArray(o.favoriteTracks)?o.favoriteTracks:['Промзона'],
+      wins:Number(o.wins)||0,losses:Number(o.losses)||0,avatar:String(o.avatar||'AI'),taunt:String(o.taunt||''),preLines:Array.isArray(o.preLines)?o.preLines:[],
+      winLine:String(o.winLine||''),loseLine:String(o.loseLine||''),boss:o.boss===true
+    })));
+  }
+
+  let duelFilter='all';
+  (window as any).setDuelFilter=(filter:string)=>{
+    duelFilter=['all','equal','risk','boss'].includes(filter)?filter:'all';
+    document.querySelectorAll('[data-duel-filter]').forEach((el:any)=>el.classList.toggle('active',el.dataset.duelFilter===duelFilter));
+    renderOpponents();
+  };
+
+  const switchDuelSubV11=switchDuelSub;
+  switchDuelSub=function(sub){
+    switchDuelSubV11(sub);
+    const filters=document.getElementById('duel-filter-wrap');
+    const summary=document.getElementById('duel-match-summary');
+    if(filters)filters.style.display=sub==='normal'?'flex':'none';
+    if(summary)summary.style.display=sub==='pvp'?'none':'';
+  };
+
+  renderOpponents=function(){
+    updateHeader();
+    const root=document.getElementById('opponent-list');
+    const summary=document.getElementById('duel-match-summary');
+    if(!root)return;
+    root.innerHTML='';
+    const car=carsDB.find((x:any)=>x.id===state.activeCarId);
+    if(!car){root.innerHTML='<div class="empty-note">Сначала выберите активную машину.</div>';return;}
+    if(state.licenseSuspended){root.innerHTML='<div class="empty-note">Права изъяты. Восстановите допуск к заездам в профиле.</div>';return;}
+    const myPower=getEffectivePower(car),history=state.raceHistory||[];
+    let pool=(state.duelSub==='tour'?tournamentsDB:opponentsDB).filter((o:any)=>state.level>=Number(o.unlockLevel||1));
+    if(state.duelSub==='tour'){
+      const now=Date.now(),day=new Date().toISOString().slice(0,10);
+      pool=pool.filter((o:any)=>{const r=state.tournamentRuns[String(o.id)]||{};const count=r.day===day?(Number(r.count)||0):0,next=r.day===day?(Number(r.next)||0):0;return count<3&&next<=now;});
+    }else{
+      if(duelFilter==='equal') pool=pool.filter((o:any)=>Math.abs(Number(o.power)-myPower)/Math.max(myPower,1)<=.18 && !o.boss);
+      if(duelFilter==='risk') pool=pool.filter((o:any)=>Number(o.power)>myPower*1.08 && !o.boss);
+      if(duelFilter==='boss') pool=pool.filter((o:any)=>o.boss);
+      pool=pool.slice().sort((a:any,b:any)=>{
+        if(duelFilter==='risk'||duelFilter==='boss')return Number(a.power)-Number(b.power);
+        return Math.abs(Number(a.power)-myPower)-Math.abs(Number(b.power)-myPower);
+      });
+    }
+    const visible=state.duelSub==='tour'?pool.slice(0,3):pool.slice(0,12);
+    if(summary){
+      summary.innerHTML='<div class="summary-main"><div class="summary-car">'+escapeHtml(String(car.name).split(/\s+/).slice(0,2).map((x:any)=>x[0]).join('').slice(0,3))+'</div><div><b>'+escapeHtml(car.name)+'</b><span>Текущая сборка · '+escapeHtml(car.tier)+'</span></div></div><strong>'+fmt(myPower)+'<small>л.с.</small></strong>';
+    }
+    const onlineLabel=document.getElementById('duel-online-label');if(onlineLabel)onlineLabel.textContent=pool.length+' соперников в сетке';
+    if(!visible.length){root.innerHTML='<div class="empty-note">Под этот фильтр соперников нет. Попробуйте другой диапазон.</div>';return;}
+    root.innerHTML=visible.map((opp:any,idx:number)=>{
+      const m=rivalMeta(opp),delta=(Number(opp.power)-myPower)/Math.max(myPower,1),winChance=Math.max(4,Math.min(96,Math.round(50-delta*82))),fee=entryFeeFor(opp),recent=history.includes(String(opp.id));
+      const r=state.tournamentRuns[String(opp.id)]||{},day=new Date().toISOString().slice(0,10),count=state.duelSub==='tour'&&r.day===day?(Number(r.count)||0):0,mult=state.duelSub==='tour'?([1,.72,.48][Math.min(2,count)]||.48):1,reward=Math.round(Number(opp.reward||0)*mult);
+      const cls=opp.boss?'boss extreme':delta>.28?'extreme':delta>.08?'risk':delta<-.15?'easy':'even';
+      const label=opp.boss?'BOSS':delta>.28?'EXTREME':delta>.08?'RISK':delta<-.15?'FAVORABLE':'EVEN';
+      return '<article class="duel-card-v11 '+cls+'" style="animation-delay:'+Math.min(idx*28,240)+'ms"><div class="duel-card-main"><div class="duel-card-top"><div class="duel-avatar-v11">'+escapeHtml(m.avatar)+'</div><div class="duel-card-id"><b>'+escapeHtml(opp.name)+'</b><span>'+escapeHtml(m.car)+' · '+escapeHtml(m.style)+'</span></div><div class="duel-card-rating"><b>'+m.rating+'</b><small>RATING</small></div></div><div class="duel-difficulty"><span class="'+(cls.includes('extreme')?'extreme':cls.includes('risk')?'risk':'')+'">'+label+'</span><small>'+(Number(opp.power)>=myPower?'+':'')+Math.round(Number(opp.power)-myPower)+' л.с. к вашей сборке</small></div><div class="duel-quote-v11">“'+escapeHtml(opp.taunt||pick(opp.preLines||['Встретимся на финише.']))+'”</div><div class="duel-tags-v11"><span>Стиль <b>'+escapeHtml(m.style)+'</b></span><span>Трасса <b>'+escapeHtml(m.favoriteTracks[0]||'Промзона')+'</b></span><span>Карьера <b>'+m.wins+'–'+m.losses+'</b></span><span>С вами <b>'+m.record.wins+'–'+m.record.losses+'</b></span></div><div class="duel-match-v11"><div class="duel-match-head"><span>Матчап</span><b>'+winChance+'% шанс</b></div><div class="duel-match-bar"><i style="width:'+winChance+'%"></i></div></div></div><aside class="duel-card-side"><div><div class="duel-power-v11"><span>Мощность</span><b>'+fmt(opp.power)+'</b><small>л.с.</small></div><div class="duel-money-v11"><div><span>Вход</span><b>'+fmt(fee)+'</b></div><div><span>Приз</span><b>'+fmt(reward)+'</b></div></div></div><div><button class="duel-enter-v11" onclick="prepareRace(\''+String(opp.id).replace(/'/g,"\\'")+'\',\''+(state.duelSub==='tour'?'tour':'normal')+'\')">НА ЛИНИЮ</button>'+(recent?'<div class="duel-recent-v11">Недавняя встреча</div>':'')+'</div></aside></article>';
+    }).join('');
+  };
+
+  const finishRaceV11=finishRace;
+  finishRace=function(playerWins:any,cArg:any){
+    const ctx=cArg||raceCtx;
+    const privateCode=ctx?.privateDuelCode;
+    const result=privateCode?{elapsedMs:Math.round(Number(ctx.elapsed||0)*1000),topSpeedKmh:Number(ctx.topSpeed||ctx.speed||0),perfectShifts:Number(ctx.perfectShifts||0),missedShifts:Number(ctx.errors||0)}:null;
+    finishRaceV11(playerWins,cArg);
+    if(privateCode&&result){
+      serverFetch('/api/duels/room',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'submitResult',code:privateCode,...result})})
+        .then(r=>r.json()).then(payload=>window.dispatchEvent(new CustomEvent('autosyndicate:duel-result',{detail:payload}))).catch(()=>{});
+    }
+  };
+
+  (window as any).__AUTOSYNDICATE_START_PRIVATE_DUEL__=(payload:any)=>{
+    try{
+      const room=payload.room||{},role=payload.role,mySide=role==='a'?'a':'b',otherSide=role==='a'?'b':'a';
+      const myCarId=Number(room['player_'+mySide+'_car_id']),otherCarId=Number(room['player_'+otherSide+'_car_id']);
+      if(!state.ownedCars.includes(myCarId)){showToast('Эта машина недоступна в вашем гараже');return;}
+      state.activeCarId=myCarId;saveState();updateHeader();renderGarage();
+      const otherProfile=(payload.profiles||[]).find((p:any)=>p.id===room['player_'+otherSide+'_id'])||{};
+      const otherCar=(payload.selectedCars||[]).find((c:any)=>Number(c.id)===otherCarId)||{};
+      const tempId='private_'+String(room.public_code);
+      const temp={id:tempId,name:String(otherProfile.name||room['player_'+otherSide+'_name']||'Игрок'),power:Number(otherCar.power)||getEffectivePower(carsDB.find((c:any)=>c.id===myCarId)),reward:0,unlockLevel:1,car:String(otherCar.name||'Private build'),rating:Number(otherProfile.rating)||0,style:'Live duel',favoriteTracks:['Private room'],wins:0,losses:0,avatar:String(otherProfile.name||'P').slice(0,2).toUpperCase(),taunt:'Дуэль из Telegram-чата.',preLines:['Комната закрыта. На линии только вы двое.']};
+      const existing=opponentsDB.findIndex((o:any)=>String(o.id)===tempId);if(existing>=0)opponentsDB[existing]=temp;else opponentsDB.push(temp);
+      prepareRace(tempId,'normal');
+      if(raceCtx){raceCtx.privateDuelCode=String(room.public_code);raceCtx.fee=0;raceCtx.fuelCost=0;raceCtx.opp.reward=0;raceCtx.mode='private';renderRaceBrief();}
+    }catch(_){showToast('Не удалось открыть приватный заезд');}
+  };
+
+  (window as any).switchDuelSub=switchDuelSub;
+  (window as any).renderOpponents=renderOpponents;
+  (window as any).finishRace=finishRace;
+  renderGarage();renderShop();if(document.getElementById('screen-duel-select')?.classList.contains('active'))renderOpponents();
+})();

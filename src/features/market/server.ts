@@ -4,15 +4,37 @@ import type { z } from 'zod';
 import type { marketActionSchema } from './schema';
 
 type MarketAction = z.infer<typeof marketActionSchema>;
+const MARKET_FIELDS = 'id,seller_id,seller_name,car_id,price,vehicle_data,status,buyer_id,created_at,sold_at';
 
 export async function listActiveMarket() {
   const supabase = createServerSupabase();
   const { data, error } = await supabase
     .from('market_cars')
-    .select('id,seller_id,seller_name,car_id,price,vehicle_data,status,created_at')
+    .select(MARKET_FIELDS)
     .eq('status', 'active')
     .order('id', { ascending: false })
     .limit(200);
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function getMarketListing(listingId: number) {
+  const { data, error } = await createServerSupabase()
+    .from('market_cars')
+    .select(MARKET_FIELDS)
+    .eq('id', listingId)
+    .maybeSingle();
+  if (error) throw error;
+  return data ?? null;
+}
+
+export async function listPlayerMarket(playerId: string) {
+  const { data, error } = await createServerSupabase()
+    .from('market_cars')
+    .select(MARKET_FIELDS)
+    .eq('seller_id', playerId)
+    .order('id', { ascending: false })
+    .limit(60);
   if (error) throw error;
   return data ?? [];
 }

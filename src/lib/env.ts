@@ -10,7 +10,10 @@ const publicSchema = z.object({
 const serverSchema = publicSchema.extend({
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(20),
   TELEGRAM_BOT_TOKEN: z.string().min(20),
+  TELEGRAM_BOT_USERNAME: z.string().regex(/^[A-Za-z0-9_]{5,64}$/),
+  TELEGRAM_WEBHOOK_SECRET: z.string().regex(/^[A-Za-z0-9_-]{16,256}$/),
   SESSION_SECRET: z.string().min(32),
+  ADMIN_TELEGRAM_IDS: z.string().min(1),
   TELEGRAM_AUTH_MAX_AGE_SECONDS: z.coerce.number().int().min(60).max(86400).default(3600)
 });
 
@@ -31,7 +34,19 @@ export function getServerEnv() {
     NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
     SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
     TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN,
+    TELEGRAM_BOT_USERNAME: process.env.TELEGRAM_BOT_USERNAME,
+    TELEGRAM_WEBHOOK_SECRET: process.env.TELEGRAM_WEBHOOK_SECRET,
     SESSION_SECRET: process.env.SESSION_SECRET,
+    ADMIN_TELEGRAM_IDS: process.env.ADMIN_TELEGRAM_IDS,
     TELEGRAM_AUTH_MAX_AGE_SECONDS: process.env.TELEGRAM_AUTH_MAX_AGE_SECONDS
   });
+}
+
+export function getAdminTelegramIds() {
+  return new Set(
+    getServerEnv().ADMIN_TELEGRAM_IDS
+      .split(',')
+      .map((value: string) => value.trim())
+      .filter((value: string) => /^\d{1,24}$/.test(value))
+  );
 }

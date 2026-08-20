@@ -12,8 +12,8 @@ export function assertSameOrigin(request: Request) {
 
 export function apiError(error: unknown, status = 400) {
   const message = error instanceof Error ? error.message : 'request failed';
-  const safe = message === 'UNAUTHORIZED' ? 'unauthorized' : message.slice(0, 180);
-  const code = message === 'UNAUTHORIZED' ? 401 : message.includes('rate limit') ? 429 : status;
+  const safe = message === 'UNAUTHORIZED' ? 'unauthorized' : message === 'FORBIDDEN' ? 'forbidden' : message === 'BANNED' ? 'player banned' : message.slice(0, 180);
+  const code = message === 'UNAUTHORIZED' ? 401 : (message === 'FORBIDDEN' || message === 'BANNED') ? 403 : message.includes('rate limit') ? 429 : status;
   return NextResponse.json({ ok: false, error: safe }, { status: code, headers: { 'Cache-Control':'no-store' } });
 }
 

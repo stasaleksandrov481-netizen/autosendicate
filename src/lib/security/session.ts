@@ -3,6 +3,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import { cookies } from 'next/headers';
 import { z } from 'zod';
 import { getServerEnv } from '@/lib/env';
+import { createServerSupabase } from '@/lib/supabase/server';
 
 export const SESSION_COOKIE = 'autosyndicate_session';
 const sessionSchema = z.object({
@@ -46,5 +47,18 @@ export async function getSession() {
 export async function requireSession() {
   const session = await getSession();
   if (!session) throw new Error('UNAUTHORIZED');
+  const supabase = createServerSupabase();
+  const [{ data: profile, error: profileError }, { data: principal, error: principalError }] = await Promise.all([
+    supabase.from('player_profiles').select('owner_uid,banned_at').eq('id', session.playerId).maybeSingle(),
+    supabase.from('telegram_principals').select('telegram_user_id,player_id,owner_uid').eq('telegram_user_id', session.telegramId).maybeSingle()
+  ]);
+  if (profileError) throw profileError;
+  if (principalError) throw principalError;
+  if (!profile || !principal || principal.player_id !== session.playerId || principal.owner_uid !== profile.owner_uid) {
+    // Returning an auth failure intentionally triggers the Mini App's one-shot Telegram re-auth,
+    // which repairs stale principal/profile bindings without leaving social screens half-online.
+    throw new Error('UNAUTHORIZED');
+  }
+  if (profile.banned_at) throw new Error('BANNED');
   return session;
 }

@@ -1,13 +1,26 @@
 import { marketActionSchema } from '@/features/market/schema';
-import { applyMarketAction, listActiveMarket } from '@/features/market/server';
+import { applyMarketAction, getMarketListing, listActiveMarket, listPlayerMarket } from '@/features/market/server';
 import { apiError, assertSameOrigin, noStoreJson } from '@/lib/security/http';
 import { enforceRateLimit } from '@/lib/security/rate-limit';
 import { requireSession } from '@/lib/security/session';
 
 export const runtime = 'nodejs';
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    const url = new URL(request.url);
+    const id = Number(url.searchParams.get('id'));
+    const scope = url.searchParams.get('scope');
+    if (Number.isInteger(id) && id > 0) {
+      const session = await requireSession();
+      await enforceRateLimit(session.playerId, 'market_read', 120, 60);
+      return noStoreJson({ ok: true, data: await getMarketListing(id) });
+    }
+    if (scope === 'mine') {
+      const session = await requireSession();
+      await enforceRateLimit(session.playerId, 'market_read', 120, 60);
+      return noStoreJson({ ok: true, data: await listPlayerMarket(session.playerId) });
+    }
     return noStoreJson({ ok: true, data: await listActiveMarket() });
   } catch (error) {
     return apiError(error);
