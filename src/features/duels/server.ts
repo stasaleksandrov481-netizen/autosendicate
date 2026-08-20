@@ -10,7 +10,7 @@ function displayName(user: TgUser) {
   const full = [user.first_name, user.last_name].filter(Boolean).join(' ').trim();
   return full || user.username || String(user.id);
 }
-function safeHtml(value: string) { return value.replace(/[&<>]/g, (m) => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]!)); }
+export function safeHtml(value: string) { return value.replace(/[&<>]/g, (m) => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]!)); }
 function makeCode() { return randomBytes(12).toString('base64url'); }
 function playerIdFromTelegram(id: number) { return `tg_${id}`; }
 

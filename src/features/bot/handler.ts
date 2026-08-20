@@ -3,7 +3,7 @@ import { createServerSupabase } from '@/lib/supabase/server';
 import { getServerEnv } from '@/lib/env';
 import type { TgMessage, TgUpdate, TgUser, TgInlineQuery } from './types';
 import { answerTelegramCallback, answerTelegramInlineQuery, sendTelegramMessage, editTelegramMessage } from './telegram';
-import { createChatDuelChallenge, createInlineDuelForAcceptor, handleDuelCallback } from '@/features/duels/server';
+import { createChatDuelChallenge, createInlineDuelForAcceptor, handleDuelCallback, safeHtml } from '@/features/duels/server';
 import { isAdminTelegramId } from '@/features/admin/auth';
 import { enforceRateLimit } from '@/lib/security/rate-limit';
 
