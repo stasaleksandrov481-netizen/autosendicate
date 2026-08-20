@@ -1,6 +1,6 @@
 {
   "name": "autosyndicate-carbon",
-  "version": "12.4.1",
+  "version": "12.6.0",
   "private": true,
   "engines": {
     "node": ">=20.9.0"
@@ -13,8 +13,10 @@
     "lint": "eslint .",
     "check:env": "node scripts/check-env.mjs",
     "check:sync": "node scripts/verify-v12.mjs",
-    "check:release": "node scripts/verify-remaster.mjs && node scripts/verify-v12.mjs && node scripts/verify-v12-4.mjs",
-    "check:v12-4": "node scripts/verify-v12-4.mjs"
+    "check:release": "node scripts/verify-remaster.mjs && node scripts/verify-v12.mjs && node scripts/verify-v12-4.mjs && node scripts/verify-v12-5.mjs",
+    "check:v12-4": "node scripts/verify-v12-4.mjs",
+    "check:v12-5": "node scripts/verify-v12-5.mjs",
+    "telegram:setup": "node scripts/setup-telegram-webhook.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.3",
