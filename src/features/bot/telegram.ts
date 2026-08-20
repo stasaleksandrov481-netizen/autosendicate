@@ -2,19 +2,6 @@ import 'server-only';
 import { getServerEnv } from '@/lib/env';
 
 interface InlineButton { text: string; callback_data?: string; url?: string; switch_inline_query?: string; switch_inline_query_current_chat?: string; }
-export interface TelegramInlinePhotoResult {
-  type: 'photo';
-  id: string;
-  photo_url: string;
-  thumbnail_url: string;
-  photo_width?: number;
-  photo_height?: number;
-  title: string;
-  description?: string;
-  caption?: string;
-  parse_mode?: 'HTML'|'MarkdownV2';
-  reply_markup?: { inline_keyboard: InlineButton[][] };
-}
 interface BotInfo {
   id: number;
   username?: string;
@@ -60,13 +47,8 @@ export function editTelegramMessage(chatId: number, messageId: number, text: str
   });
 }
 
-export function answerTelegramInlineQuery(inlineQueryId: string, results: TelegramInlinePhotoResult[], cacheTime = 0) {
-  return telegramCall('answerInlineQuery', {
-    inline_query_id: inlineQueryId,
-    results,
-    cache_time: cacheTime,
-    is_personal: true
-  });
+export function answerTelegramInlineQuery(inlineQueryId: string, results: unknown[], options?: { cacheTime?: number; isPersonal?: boolean; nextOffset?: string }) {
+  return telegramCall('answerInlineQuery', { inline_query_id: inlineQueryId, results, cache_time: options?.cacheTime ?? 0, is_personal: options?.isPersonal ?? true, next_offset: options?.nextOffset ?? '' });
 }
 
 export function answerTelegramCallback(callbackQueryId: string, text?: string, showAlert = false) {

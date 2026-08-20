@@ -41,7 +41,8 @@ export function GameClient() {
 
       const startParam = window.Telegram?.WebApp?.initDataUnsafe?.start_param || new URLSearchParams(window.location.search).get('tgWebAppStartParam') || '';
       if (startParam === 'admin') { window.location.replace('/admin'); return; }
-      if (/^[A-Za-z0-9_-]{12,32}$/.test(startParam)) setDuelCode(startParam.replace(/^duel_/, ''));
+      if (/^duel_[A-Za-z0-9_-]{12,32}$/.test(startParam)) setDuelCode(startParam.slice(5));
+      else if (/^[A-Za-z0-9_-]{12,32}$/.test(startParam)) setDuelCode(startParam);
       await import('@/legacy/runtime');
     })();
 

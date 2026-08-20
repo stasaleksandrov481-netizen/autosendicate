@@ -149,3 +149,44 @@ export async function updateDuelRoom(session: GameSession, action: { action: str
   }
   return getDuelRoomForSession(session, action.code);
 }
+
+
+export async function createInlineDuelForAcceptor(actor: TgUser, creatorTelegramId: number, creatorCarId: number, chatId?: number, messageId?: number) {
+  if (actor.is_bot) throw new Error('bot cannot duel');
+  if (actor.id === creatorTelegramId) throw new Error('cannot duel yourself');
+  const s = createServerSupabase();
+  const creatorId = playerIdFromTelegram(creatorTelegramId);
+  const actorId = playerIdFromTelegram(actor.id);
+  const { data: creator, error: creatorError } = await s.from('player_profiles').select('id,name,telegram_username,active_car_id,owned_cars,active_plate,banned_at').eq('id', creatorId).maybeSingle();
+  if (creatorError) throw creatorError;
+  if (!creator) throw new Error('creator profile missing');
+  if (creator.banned_at) throw new Error('creator banned');
+  const creatorOwned = Array.isArray(creator.owned_cars) ? creator.owned_cars : [];
+  if (!creatorOwned.includes(creatorCarId)) throw new Error('creator car unavailable');
+  const { data: creatorCar, error: creatorCarError } = await s.from('game_cars_v11').select('id,name,image_path,power').eq('id', creatorCarId).eq('active', true).maybeSingle();
+  if (creatorCarError) throw creatorCarError;
+  if (!creatorCar) throw new Error('creator car unavailable');
+
+  const { data: opponent, error: opponentError } = await s.from('player_profiles').select('id,name,telegram_username,active_car_id,owned_cars,active_plate,banned_at').eq('id', actorId).maybeSingle();
+  if (opponentError) throw opponentError;
+  if (!opponent || !Array.isArray(opponent.owned_cars) || opponent.owned_cars.length === 0) throw new Error('opponent has no car');
+  if (opponent.banned_at) throw new Error('opponent banned');
+  const opponentCarId = Number(opponent.active_car_id) || Number(opponent.owned_cars[0]);
+  if (!opponent.owned_cars.includes(opponentCarId)) throw new Error('opponent car unavailable');
+  const { data: opponentCar, error: opponentCarError } = await s.from('game_cars_v11').select('id,name,image_path,power').eq('id', opponentCarId).eq('active', true).maybeSingle();
+  if (opponentCarError) throw opponentCarError;
+  if (!opponentCar) throw new Error('opponent car unavailable');
+
+  const code = makeCode();
+  const { data: room, error } = await s.from('duel_rooms_v11').insert({
+    public_code: code, chat_id: chatId ?? null, challenge_message_id: messageId ?? null,
+    player_a_id: creatorId, player_b_id: actorId,
+    player_a_telegram_id: creatorTelegramId, player_b_telegram_id: actor.id,
+    player_a_name: creator.name || `@${creator.telegram_username || creatorTelegramId}`,
+    player_b_name: opponent.name || `@${opponent.telegram_username || actor.id}`,
+    player_a_car_id: creatorCarId, player_b_car_id: opponentCarId,
+    status: 'accepted', accepted_at: new Date().toISOString(), expires_at: new Date(Date.now()+15*60_000).toISOString()
+  }).select('*').single();
+  if (error) throw error;
+  return { room, creator, opponent, creatorCar, opponentCar };
+}

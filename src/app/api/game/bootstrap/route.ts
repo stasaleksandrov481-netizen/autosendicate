@@ -16,7 +16,7 @@ export async function GET(){
   const carRows=(cars.data??[]).filter((c:any)=>Number(c.id)>=1&&Number(c.id)<=25&&/^\/assets\/cars\/[0-9]+\.webp$/i.test(String(c.image_path||'')));
   let player=null;
   if(session?.playerId){
-    const res=await s.from('player_profiles').select('id,name,level,balance,xp,races,wins,losses,total_earned,owned_cars,active_car_id,active_plate,rating,best_0_100').eq('id',session.playerId).maybeSingle();
+    const res=await s.from('player_profiles').select('id,name,level,balance,xp,races,wins,losses,total_earned,owned_cars,active_car_id,rating,best_0_100').eq('id',session.playerId).maybeSingle();
     if(!res.error) player=res.data;
   }
   return noStoreJson({
