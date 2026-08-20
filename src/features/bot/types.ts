@@ -9,4 +9,5 @@ export interface TgMessage {
   reply_to_message?: TgMessage;
 }
 export interface TgCallbackQuery { id: string; from: TgUser; message?: TgMessage; data?: string; }
-export interface TgUpdate { update_id: number; message?: TgMessage; edited_message?: TgMessage; callback_query?: TgCallbackQuery; }
+export interface TgInlineQuery { id: string; from: TgUser; query: string; offset?: string; chat_type?: 'sender'|'private'|'group'|'supergroup'; }
+export interface TgUpdate { update_id: number; message?: TgMessage; edited_message?: TgMessage; callback_query?: TgCallbackQuery; inline_query?: TgInlineQuery; }

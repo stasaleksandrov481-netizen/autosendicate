@@ -2014,7 +2014,7 @@ async function syncPlayerProfile(force=false){
     const car=typeof carsDB!=='undefined'?carsDB.find(c=>c.id===state.activeCarId):null;
     const response=await serverFetch('/api/profile/sync',{
       method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({displayName:safeText(state.playerName,'Гонщик',48),photoUrl:state.playerPhoto||null,currentCarName:car?.name||null,activeCarId:Number(state.activeCarId)||1})
+      body:JSON.stringify({displayName:safeText(state.playerName,'Гонщик',48),photoUrl:state.playerPhoto||null,currentCarName:car?.name||null,activeCarId:Number(state.activeCarId)||1,activePlate:activePlate(Number(state.activeCarId)||1)})
     });
     if(!response.ok)return false;
     lastProfileSyncAt=Date.now();return true;

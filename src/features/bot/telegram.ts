@@ -1,7 +1,20 @@
 import 'server-only';
 import { getServerEnv } from '@/lib/env';
 
-interface InlineButton { text: string; callback_data?: string; url?: string; }
+interface InlineButton { text: string; callback_data?: string; url?: string; switch_inline_query?: string; switch_inline_query_current_chat?: string; }
+export interface TelegramInlinePhotoResult {
+  type: 'photo';
+  id: string;
+  photo_url: string;
+  thumbnail_url: string;
+  photo_width?: number;
+  photo_height?: number;
+  title: string;
+  description?: string;
+  caption?: string;
+  parse_mode?: 'HTML'|'MarkdownV2';
+  reply_markup?: { inline_keyboard: InlineButton[][] };
+}
 interface BotInfo {
   id: number;
   username?: string;
@@ -47,6 +60,15 @@ export function editTelegramMessage(chatId: number, messageId: number, text: str
   });
 }
 
+export function answerTelegramInlineQuery(inlineQueryId: string, results: TelegramInlinePhotoResult[], cacheTime = 0) {
+  return telegramCall('answerInlineQuery', {
+    inline_query_id: inlineQueryId,
+    results,
+    cache_time: cacheTime,
+    is_personal: true
+  });
+}
+
 export function answerTelegramCallback(callbackQueryId: string, text?: string, showAlert = false) {
   return telegramCall('answerCallbackQuery', { callback_query_id: callbackQueryId, text, show_alert: showAlert });
 }
@@ -64,7 +86,7 @@ export async function setTelegramWebhook() {
   const result = await telegramCall('setWebhook', {
     url: `${env.NEXT_PUBLIC_APP_URL.replace(/\/$/, '')}/api/telegram/webhook`,
     secret_token: env.TELEGRAM_WEBHOOK_SECRET,
-    allowed_updates: ['message','edited_message','callback_query','my_chat_member'],
+    allowed_updates: ['message','edited_message','callback_query','inline_query','my_chat_member'],
     drop_pending_updates: false,
     max_connections: 40
   });
@@ -94,7 +116,7 @@ export async function ensureTelegramWebhook(force = false) {
   const expectedUrl = `${env.NEXT_PUBLIC_APP_URL.replace(/\/$/, '')}/api/telegram/webhook`;
   const [bot, info] = await Promise.all([getTelegramBotInfo(), getTelegramWebhookInfo()]);
   const allowed = new Set(info.allowed_updates ?? []);
-  const webhookOk = info.url === expectedUrl && allowed.has('message') && allowed.has('callback_query');
+  const webhookOk = info.url === expectedUrl && allowed.has('message') && allowed.has('callback_query') && allowed.has('inline_query');
   if (!webhookOk) await setTelegramWebhook();
 
   lastWebhookEnsureAt = now;

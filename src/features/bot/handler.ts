@@ -2,6 +2,7 @@ import 'server-only';
 import { createServerSupabase } from '@/lib/supabase/server';
 import { getServerEnv } from '@/lib/env';
 import type { TgMessage, TgUpdate, TgUser } from './types';
+import { handleInlineDuelCallback, handleInlineDuelQuery } from '@/features/duels/inline';
 import { answerTelegramCallback, sendTelegramMessage } from './telegram';
 import { createChatDuelChallenge, handleDuelCallback } from '@/features/duels/server';
 import { isAdminTelegramId } from '@/features/admin/auth';
@@ -106,7 +107,14 @@ export async function handleTelegramUpdate(update: TgUpdate) {
   const first = await markUpdate(update.update_id);
   if (!first) return { duplicate: true };
 
+  if (update.inline_query) {
+    await handleInlineDuelQuery(update.inline_query);
+    return { inline_query: true };
+  }
+
   if (update.callback_query?.data) {
+    const inlineHandled = await handleInlineDuelCallback(update.callback_query.id, update.callback_query.from, update.callback_query.data, update.callback_query.message);
+    if (inlineHandled) return { callback: true, inline: true };
     const handled = await handleDuelCallback(update.callback_query.id, update.callback_query.from, update.callback_query.data, update.callback_query.message);
     if (!handled) await answerTelegramCallback(update.callback_query.id);
     return { callback: true };
