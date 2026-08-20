@@ -14,6 +14,8 @@ const telegramUserSchema = z.object({
 export type VerifiedTelegramUser = z.infer<typeof telegramUserSchema>;
 
 export function verifyTelegramInitData(initData: string, botToken: string, maxAgeSeconds: number): VerifiedTelegramUser {
+  const cleanToken = botToken.trim();
+  if (!cleanToken) throw new Error('telegram bot token missing');
   if (!initData || initData.length > 16_000) throw new Error('telegram initData missing');
   const params = new URLSearchParams(initData);
   const receivedHash = params.get('hash');
@@ -29,7 +31,7 @@ export function verifyTelegramInitData(initData: string, botToken: string, maxAg
     .map(([key, value]) => `${key}=${value}`)
     .join('\n');
 
-  const secretKey = createHmac('sha256', 'WebAppData').update(botToken).digest();
+  const secretKey = createHmac('sha256', 'WebAppData').update(cleanToken).digest();
   const calculated = createHmac('sha256', secretKey).update(dataCheckString).digest('hex');
   const a = Buffer.from(calculated, 'hex');
   const b = Buffer.from(receivedHash, 'hex');

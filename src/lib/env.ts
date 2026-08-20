@@ -1,5 +1,10 @@
 import { z } from 'zod';
 
+function clean(value: string | undefined) {
+  const normalized = value?.trim();
+  return normalized || undefined;
+}
+
 const publicSchema = z.object({
   NEXT_PUBLIC_APP_NAME: z.string().min(1).default('AutoSyndicate Carbon'),
   NEXT_PUBLIC_APP_URL: z.string().url(),
@@ -19,26 +24,26 @@ const serverSchema = publicSchema.extend({
 
 export function getPublicEnv() {
   return publicSchema.parse({
-    NEXT_PUBLIC_APP_NAME: process.env.NEXT_PUBLIC_APP_NAME,
-    NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
-    NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
-    NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+    NEXT_PUBLIC_APP_NAME: clean(process.env.NEXT_PUBLIC_APP_NAME),
+    NEXT_PUBLIC_APP_URL: clean(process.env.NEXT_PUBLIC_APP_URL),
+    NEXT_PUBLIC_SUPABASE_URL: clean(process.env.NEXT_PUBLIC_SUPABASE_URL),
+    NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: clean(process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY)
   });
 }
 
 export function getServerEnv() {
   return serverSchema.parse({
-    NEXT_PUBLIC_APP_NAME: process.env.NEXT_PUBLIC_APP_NAME,
-    NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
-    NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
-    NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
-    SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
-    TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN,
-    TELEGRAM_BOT_USERNAME: process.env.TELEGRAM_BOT_USERNAME,
-    TELEGRAM_WEBHOOK_SECRET: process.env.TELEGRAM_WEBHOOK_SECRET,
-    SESSION_SECRET: process.env.SESSION_SECRET,
-    ADMIN_TELEGRAM_IDS: process.env.ADMIN_TELEGRAM_IDS,
-    TELEGRAM_AUTH_MAX_AGE_SECONDS: process.env.TELEGRAM_AUTH_MAX_AGE_SECONDS
+    NEXT_PUBLIC_APP_NAME: clean(process.env.NEXT_PUBLIC_APP_NAME),
+    NEXT_PUBLIC_APP_URL: clean(process.env.NEXT_PUBLIC_APP_URL),
+    NEXT_PUBLIC_SUPABASE_URL: clean(process.env.NEXT_PUBLIC_SUPABASE_URL),
+    NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: clean(process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY),
+    SUPABASE_SERVICE_ROLE_KEY: clean(process.env.SUPABASE_SERVICE_ROLE_KEY),
+    TELEGRAM_BOT_TOKEN: clean(process.env.TELEGRAM_BOT_TOKEN),
+    TELEGRAM_BOT_USERNAME: clean(process.env.TELEGRAM_BOT_USERNAME),
+    TELEGRAM_WEBHOOK_SECRET: clean(process.env.TELEGRAM_WEBHOOK_SECRET),
+    SESSION_SECRET: clean(process.env.SESSION_SECRET),
+    ADMIN_TELEGRAM_IDS: clean(process.env.ADMIN_TELEGRAM_IDS),
+    TELEGRAM_AUTH_MAX_AGE_SECONDS: clean(process.env.TELEGRAM_AUTH_MAX_AGE_SECONDS)
   });
 }
 

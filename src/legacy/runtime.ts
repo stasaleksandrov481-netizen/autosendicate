@@ -145,23 +145,23 @@ function loadState(){
     localStorage.setItem(SAVE_KEY,JSON.stringify(state));
   }catch(e){ console.warn('load failed, using defaults',e); state=defaultState(); }
 }
-function manualSave(){ saveState(); showToast(' Прогресс сохранён'); }
+function manualSave(){ saveState(); showToast('Прогресс сохранён'); }
 function exportSave(){
   saveState();
   const blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');
-  a.href=url;a.download='autosyndicate_carbon_save.json';document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);showToast(' Сохранение экспортировано');
+  a.href=url;a.download='autosyndicate_carbon_save.json';document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);showToast('Резервная копия создана');
 }
 function importSave(evt){
   const file=evt.target.files&&evt.target.files[0]; if(!file)return;
   if(file.size>MAX_SAVE_BYTES){showToast(' Файл слишком большой');evt.target.value='';return;}
   const reader=new FileReader();
-  reader.onload=e=>{try{state=normalizeState(JSON.parse(String(e.target.result||'')));saveState();applyUiSettings();showToast(' Сохранение импортировано');switchTab('profile');}catch(_){showToast(' Неверный файл сохранения');}finally{evt.target.value='';}};
+  reader.onload=e=>{try{state=normalizeState(JSON.parse(String(e.target.result||'')));saveState();applyUiSettings();showToast('Прогресс восстановлен');switchTab('profile');}catch(_){showToast(' Неверный файл сохранения');}finally{evt.target.value='';}};
   reader.readAsText(file);
 }
 function resetProgress(){
   if(!confirm('Точно сбросить весь прогресс? Это действие необратимо.'))return;
   if(!confirm('Последнее предупреждение: машины, деньги и достижения будут удалены. Продолжить?'))return;
-  localStorage.removeItem(SAVE_KEY);LEGACY_SAVE_KEYS.forEach(k=>localStorage.removeItem(k));state=defaultState();applyUiSettings();showToast(' Прогресс сброшен');switchTab('garage');
+  localStorage.removeItem(SAVE_KEY);LEGACY_SAVE_KEYS.forEach(k=>localStorage.removeItem(k));state=defaultState();applyUiSettings();showToast('Новая карьера начата');switchTab('garage');
 }
 function applyUiSettings(){
   document.body.classList.toggle('reduce-motion',!!state.settings.reducedMotion);
@@ -245,8 +245,8 @@ const carsDB = [
   { id:23, name:"Lamborghini Huracan", image:"/assets/cars/23.webp", price:42000, power:930, tier:"Hypercar Tier 6", cat:"hyper", flavor:"Итальянский бык на асфальте. Соседи снимают на телефон каждый выезд." },
   { id:24, name:"Lamborghini Aventador", image:"/assets/cars/24.webp", price:52000, power:975, tier:"Legendary Boss", cat:"legend", flavor:"Ножничные двери — билет в клуб избранных подполья." },
   { id:25, name:"Bugatti Chiron", image:"/assets/cars/25.webp", price:78000, power:1200, tier:"Legendary Boss", cat:"legend", flavor:"Не машина — произведение искусства с мотором W16. Топ пищевой цепи." },
-  { id:26, name:"Комета Тьмы (миф)", image:null, price:95000, power:1350, tier:"Mythic ", cat:"myth", flavor:"Говорят, объезжает светофоры сама и появляется только на полнолуние. Никто не видел документов на эту тачку." },
-  { id:27, name:"'Дед Толян' — ржавое чудо", image:null, price:9999, power:1050, tier:"Mythic ", cat:"myth", flavor:"Снаружи ведро с гайками, внутри — движок неизвестного происхождения. Механики отказываются его обслуживать из уважения." }
+  { id:26, name:"Carbon Wraith", image:null, price:95000, power:1350, tier:"Mythic", cat:"myth", flavor:"Закрытая серия Carbon District. Экстремально лёгкая платформа, настроенная под максимальную скорость." },
+  { id:27, name:"Project Zero", image:null, price:62000, power:1120, tier:"Mythic", cat:"myth", flavor:"Экспериментальная уличная сборка без серийных обозначений. Баланс тяги, массы и длинных передач." }
 ];
 const CAT_LABELS = { street:"Уличный", jdm:"JDM тюнер", muscle:"Масл-кар", sport:"Спорт", super:"Суперкар", hyper:"Гиперкар", legend:"Легенда", myth:"Миф подполья" };
 const CAT_COLORS = { street:['#94a3b8','#334155'], jdm:['#38bdf8','#0c4a6e'], muscle:['#fb923c','#7c2d12'], sport:['#a78bfa','#4c1d95'], super:['#fb7185','#4c0519'], hyper:['#fbbf24','#78350f'], legend:['#facc15','#713f12'], myth:['#c084fc','#1e1033'] };
@@ -304,15 +304,15 @@ function tuneStagePrice(car,stageIndex){ const base=Math.max(250,Math.round(car.
 
 /* ==================== OPPONENTS / TOURNAMENTS ==================== */
 const opponentsDB = [
-  { id:1, name:"Дворовый Стас на 'копейке'", image:null, power:220, reward:220, unlockLevel:1, taunt:"«Погнали, братан, я на этой тачке с музыкой из телефона!»" },
-  { id:2, name:"Толян с раёна на Golf'e", image:null, power:340, reward:380, unlockLevel:1, taunt:"«У меня чип стоит, между прочим!»" },
-  { id:3, name:"Августина на мамином Audi", image:null, power:480, reward:650, unlockLevel:2, taunt:"«Мама не узнает, погнали!»" },
-  { id:4, name:"Ночной Гонщик 'Феникс'", image:null, power:620, reward:1100, unlockLevel:4, taunt:"«Тут тебе не покатушки, тут дуэль.»" },
-  { id:5, name:"Барон трассы Вадим", image:null, power:780, reward:2000, unlockLevel:6, taunt:"«Многие пытались. Мало кто финишировал первым.»" },
-  { id:6, name:"Скрытная 'Тень'", image:null, power:950, reward:3600, unlockLevel:8, taunt:"«...» (она никогда не разговаривает)" },
-  { id:7, name:"Легенда подполья Дариан", image:null, power:1150, reward:6000, unlockLevel:11, taunt:"«Я жду соперника десять лет. Ты следующий проигравший.»", boss:true },
-  { id:8, name:"Финалист 'Полночь'", image:null, power:1350, reward:10000, unlockLevel:14, taunt:"«Никто не побеждал меня дважды. Некоторые — ни разу.»", boss:true },
-  { id:9, name:"Король подполья «Синдикат»", image:null, power:1550, reward:20000, unlockLevel:18, taunt:"«Ты хоть знаешь, кто здесь всем заправляет?»", boss:true }
+  { id:1, name:"Riot", image:null, power:220, reward:220, unlockLevel:1, taunt:"Первый старт решает больше, чем кажется." },
+  { id:2, name:"Kade", image:null, power:340, reward:380, unlockLevel:1, taunt:"Не смотри на кузов. Смотри на мой старт." },
+  { id:3, name:"Avery", image:null, power:480, reward:650, unlockLevel:2, taunt:"Увидимся на следующей передаче." },
+  { id:4, name:"Phoenix", image:null, power:620, reward:1100, unlockLevel:4, taunt:"«Тут тебе не покатушки, тут дуэль.»" },
+  { id:5, name:"Vektor", image:null, power:780, reward:2000, unlockLevel:6, taunt:"«Многие пытались. Мало кто финишировал первым.»" },
+  { id:6, name:"Shade", image:null, power:950, reward:3600, unlockLevel:8, taunt:"Ни слова до финиша." },
+  { id:7, name:"Darian", image:null, power:1150, reward:6000, unlockLevel:11, taunt:"«Я жду соперника десять лет. Ты следующий проигравший.»", boss:true },
+  { id:8, name:"Midnight", image:null, power:1350, reward:10000, unlockLevel:14, taunt:"«Никто не побеждал меня дважды. Некоторые — ни разу.»", boss:true },
+  { id:9, name:"Syndicate Zero", image:null, power:1550, reward:20000, unlockLevel:18, taunt:"«Ты хоть знаешь, кто здесь всем заправляет?»", boss:true }
 ];
 const tournamentsDB = [
   { id:'t1', name:"Ночной Кубок", power:500, reward:2500, entryFee:300, unlockLevel:3, taunt:"Ночной турнир для смелых новичков." },
@@ -405,7 +405,7 @@ function addXP(n){
   state.xp+=n;
   let leveled=false;
   while(state.xp>=xpNeeded(state.level)){ state.xp-=xpNeeded(state.level); state.level++; leveled=true; }
-  if(leveled){ const bonus=state.level*50; awardMoney(bonus,'ПОВЫШЕНИЕ УРОВНЯ'); showToast("⭐ Новый уровень! Теперь LVL "+state.level); }
+  if(leveled){ const bonus=state.level*50; awardMoney(bonus,'ПОВЫШЕНИЕ УРОВНЯ'); showToast('Новый уровень · LVL '+state.level); }
   updateHeader();
 }
 
@@ -1070,7 +1070,7 @@ async function renderLeaderboard(){
   if(typeof syncPlayerProfile==='function') await syncPlayerProfile();
   const rows=typeof loadPlayerLeaderboard==='function' ? await loadPlayerLeaderboard() : [];
   if(!rows.length){
-    c.innerHTML='<div class="empty-note">Пока нет сохранённых профилей игроков. Запусти игру ещё раз после настройки таблицы Supabase.</div>';
+    c.innerHTML='<div class="empty-note">В рейтинге пока недостаточно данных для отображения игроков.</div>';
     return;
   }
   c.innerHTML='';
@@ -2150,7 +2150,7 @@ async function sendBankTransfer(){
     if(statusEl){statusEl.style.color='var(--green)';statusEl.innerText='Перевод отправлен';}
     if(amountInput)amountInput.value='';if(idInput)idInput.value='';
     updateHeader();saveState();renderBankLog();const bal=document.getElementById('bank-balance');if(bal)bal.innerText=fmt(state.coins);
-  }catch(e){console.warn(e);if(statusEl)statusEl.innerText='Ошибка перевода: '+safeText(e?.message||'сервер недоступен','сервер недоступен',80);}
+  }catch(e){console.warn(e);if(statusEl)statusEl.innerText='Перевод временно недоступен. Попробуйте позже.';}
 }
 async function claimBankTransfers(){
   if(!onlineAuthReady)return;
@@ -2463,7 +2463,31 @@ async function claimPvpResults(){
     {id:13,name:'Vanta',power:810,reward:2250,unlockLevel:6,car:'Nissan Skyline R34',rating:87,style:'Контратака',favoriteTracks:['Тоннель','Портовый обход'],wins:126,losses:42,avatar:'VT',taunt:'Выходишь вперёд — я становлюсь быстрее.',preLines:['Дай мне повод догонять.','Первый обгон ничего не значит.'],winLine:'Я предупреждал: впереди меня ехать тяжело.',loseLine:'Редко кто удерживает позицию до конца.'},
     {id:14,name:'Sable',power:990,reward:4100,unlockLevel:8,car:'Porsche 911 Turbo S',rating:92,style:'Холодный темп',favoriteTracks:['Старая эстакада','Ночной проспект'],wins:202,losses:39,avatar:'SB',taunt:'У тебя пять передач, чтобы доказать, что ты здесь не случайно.',preLines:['Проверим твою КПП.','Я не спешу. Мне хватает темпа.'],winLine:'Ровный темп всегда побеждает панику.',loseLine:'Твой темп был лучше. Запомню.'},
     {id:15,name:'Knox',power:1180,reward:7200,unlockLevel:11,car:'McLaren 720S',rating:96,style:'Максимальное давление',favoriteTracks:['Промзона','Тоннель'],wins:331,losses:54,avatar:'KX',taunt:'Когда увидишь меня сбоку, уже будет поздно.',preLines:['Не оставляй мне полметра.','Вторая половина трассы моя.'],winLine:'Ты оставил дверь открытой.',loseLine:'Закрыл всё. Нечего сказать.',boss:true},
-    {id:16,name:'Cipher',power:1430,reward:12500,unlockLevel:15,car:'Bugatti Chiron',rating:99,style:'Безошибочный',favoriteTracks:['Ночной проспект','Портовый обход'],wins:497,losses:31,avatar:'CP',taunt:'Я считаю твои ошибки до старта.',preLines:['Шанс у тебя есть. Маленький.','Сделай идеальный старт. Он тебе понадобится.'],winLine:'Ошибка номер один была выйти против меня.',loseLine:'Без ошибок. Именно так и надо.',boss:true}
+    {id:16,name:'Cipher',power:1430,reward:12500,unlockLevel:15,car:'Bugatti Chiron',rating:99,style:'Безошибочный',favoriteTracks:['Ночной проспект','Портовый обход'],wins:497,losses:31,avatar:'CP',taunt:'Я считаю твои ошибки до старта.',preLines:['Шанс у тебя есть. Маленький.','Сделай идеальный старт. Он тебе понадобится.'],winLine:'Ошибка номер один была выйти против меня.',loseLine:'Без ошибок. Именно так и надо.',boss:true},
+    {id:'npc_041',name:'Helix',power:245,reward:260,unlockLevel:1,car:'Volkswagen Golf Mk2',rating:59,style:'Чистый старт',favoriteTracks:['Промзона'],wins:21,losses:26,avatar:'HX',taunt:'Не отдавай мне первые двадцать метров.',preLines:['Старт решит всё.'],winLine:'Этого зазора хватило.',loseLine:'Ты снял старт идеально.'},
+    {id:'npc_042',name:'Kestrel',power:290,reward:320,unlockLevel:1,car:'Toyota AE86',rating:62,style:'Высокие обороты',favoriteTracks:['Старая эстакада'],wins:33,losses:30,avatar:'KS',taunt:'Держи мотор в зоне, если успеешь.',preLines:['Не упусти обороты.'],winLine:'Ты слишком рано отпустил передачу.',loseLine:'Хороший диапазон.'},
+    {id:'npc_043',name:'Echo',power:335,reward:390,unlockLevel:1,car:'Honda Civic',rating:65,style:'Поздний SHIFT',favoriteTracks:['Тоннель'],wins:42,losses:29,avatar:'EC',taunt:'Я переключаюсь позже большинства.',preLines:['Посмотрим, кто дольше держит передачу.'],winLine:'Отсечка была на моей стороне.',loseLine:'Точно в зелёную.'},
+    {id:'npc_044',name:'Jett',power:385,reward:470,unlockLevel:1,car:'Nissan Silvia S15',rating:68,style:'Рывок со старта',favoriteTracks:['Портовый обход'],wins:57,losses:32,avatar:'JT',taunt:'Если увидишь мой бампер — уже поздно.',preLines:['Не моргай на зелёном.'],winLine:'Первый рывок был решающим.',loseLine:'Ты забрал старт.'},
+    {id:'npc_045',name:'Riven',power:430,reward:560,unlockLevel:1,car:'Mazda RX-7 FD',rating:71,style:'Контроль тяги',favoriteTracks:['Промзона'],wins:64,losses:35,avatar:'RV',taunt:'Мощность бесполезна без сцепления.',preLines:['Держи колёса за асфальт.'],winLine:'Тяга решила.',loseLine:'Чисто реализовал мощность.'},
+    {id:'npc_046',name:'Mako',power:500,reward:700,unlockLevel:2,car:'Mitsubishi Evo IX',rating:74,style:'Полный привод',favoriteTracks:['Портовый обход'],wins:82,losses:38,avatar:'MK',taunt:'На старте я не оставляю места.',preLines:['Первая передача будет короткой.'],winLine:'Полный привод сделал свою работу.',loseLine:'Ты удержал меня.'},
+    {id:'npc_047',name:'Pulse',power:565,reward:860,unlockLevel:3,car:'Subaru WRX STI',rating:77,style:'Темповый',favoriteTracks:['Ночной проспект'],wins:96,losses:41,avatar:'PL',taunt:'Я не ускоряюсь рывками. Я держу давление.',preLines:['Сохраняй темп до финиша.'],winLine:'Темп не просел.',loseLine:'Ты был стабильнее.'},
+    {id:'npc_048',name:'Cinder',power:630,reward:1050,unlockLevel:4,car:'Ford Mustang GT',rating:80,style:'Тяга с низов',favoriteTracks:['Промзона'],wins:112,losses:47,avatar:'CD',taunt:'Мой момент начинается раньше твоего.',preLines:['Слушай двигатель.'],winLine:'Момента хватило.',loseLine:'Ты растянул передачи лучше.'},
+    {id:'npc_049',name:'Onyx',power:705,reward:1350,unlockLevel:5,car:'BMW M4 Competition',rating:83,style:'Точный SHIFT',favoriteTracks:['Тоннель'],wins:139,losses:45,avatar:'OX',taunt:'Одна ошибка в переключении — и заезд мой.',preLines:['Без лишних движений.'],winLine:'Я дождался ошибки.',loseLine:'Безошибочно. Уважаю.'},
+    {id:'npc_050',name:'Atlas',power:780,reward:1750,unlockLevel:6,car:'Mercedes-AMG GT',rating:85,style:'Длинная передача',favoriteTracks:['Старая эстакада'],wins:151,losses:52,avatar:'AT',taunt:'Я заберу вторую половину дистанции.',preLines:['Не празднуй ранний отрыв.'],winLine:'Финиш важнее старта.',loseLine:'Ты не отдал темп.'},
+    {id:'npc_051',name:'Crow',power:850,reward:2200,unlockLevel:7,car:'Audi RS6',rating:87,style:'Холодный расчёт',favoriteTracks:['Портовый обход'],wins:176,losses:49,avatar:'CR',taunt:'Я уже знаю, где тебя атаковать.',preLines:['Третья передача покажет всё.'],winLine:'Расчёт сошёлся.',loseLine:'Сегодня я просчитался.'},
+    {id:'npc_052',name:'Ion',power:925,reward:2850,unlockLevel:8,car:'Porsche 911 Turbo S',rating:89,style:'Короткие окна',favoriteTracks:['Ночной проспект'],wins:205,losses:44,avatar:'IN',taunt:'Зелёная зона будет короче, чем тебе хочется.',preLines:['Работай точно.'],winLine:'Точность победила.',loseLine:'Ты попал во все окна.'},
+    {id:'npc_053',name:'Lock',power:1005,reward:3600,unlockLevel:9,car:'Nissan GT-R R35',rating:91,style:'Launch control',favoriteTracks:['Промзона'],wins:236,losses:50,avatar:'LK',taunt:'Я закрываю заезд ещё на старте.',preLines:['Поймай идеальный launch.'],winLine:'Дальше догонять было уже поздно.',loseLine:'Ты выбил меня со старта.'},
+    {id:'npc_054',name:'Halo',power:1080,reward:4450,unlockLevel:10,car:'Audi R8 V10',rating:92,style:'Высокий RPM',favoriteTracks:['Тоннель'],wins:258,losses:46,avatar:'HL',taunt:'Мой мотор живёт там, где твой уже сдаётся.',preLines:['Не бойся красной зоны.'],winLine:'Обороты сделали разницу.',loseLine:'Ты выдержал диапазон.'},
+    {id:'npc_055',name:'Specter',power:1160,reward:5500,unlockLevel:11,car:'McLaren 720S',rating:94,style:'Поздняя атака',favoriteTracks:['Портовый обход'],wins:292,losses:41,avatar:'SP',taunt:'До середины трассы можешь считать себя первым.',preLines:['Не смотри назад.'],winLine:'Я пришёл тогда, когда нужно.',loseLine:'Ты не оставил мне окна.'},
+    {id:'npc_056',name:'Venom',power:1240,reward:6800,unlockLevel:12,car:'Ferrari 488 Pista',rating:95,style:'Агрессивный буст',favoriteTracks:['Ночной проспект'],wins:319,losses:45,avatar:'VN',taunt:'Давление начинается после второй.',preLines:['Удержи линию.'],winLine:'Ты не выдержал темп.',loseLine:'Ты пережил давление.'},
+    {id:'npc_057',name:'Rift',power:1320,reward:8200,unlockLevel:13,car:'Ferrari SF90',rating:96,style:'Гибридный рывок',favoriteTracks:['Старая эстакада'],wins:347,losses:39,avatar:'RF',taunt:'Разрыв появится внезапно.',preLines:['Первые метры ничего не значат.'],winLine:'Разрыв открылся вовремя.',loseLine:'Ты его закрыл.'},
+    {id:'npc_058',name:'Apex',power:1410,reward:9900,unlockLevel:14,car:'Lamborghini Huracan',rating:97,style:'Идеальная траектория',favoriteTracks:['Промзона'],wins:381,losses:36,avatar:'AX',taunt:'На вершине нет места для двоих.',preLines:['Заезд будет коротким.'],winLine:'Вершина остаётся моей.',loseLine:'Сегодня вершина твоя.',boss:true},
+    {id:'npc_059',name:'Nocturne',power:1500,reward:12200,unlockLevel:16,car:'Lamborghini Aventador',rating:98,style:'Ночной темп',favoriteTracks:['Ночной проспект','Тоннель'],wins:425,losses:34,avatar:'NC',taunt:'Ночью ошибки звучат громче.',preLines:['Светофор — последняя спокойная точка.'],winLine:'Ночь оставила тебя позади.',loseLine:'Ты забрал эту ночь.',boss:true},
+    {id:'npc_060',name:'Blackstar',power:1600,reward:15000,unlockLevel:18,car:'Bugatti Chiron',rating:99,style:'Максимальная скорость',favoriteTracks:['Портовый обход'],wins:481,losses:30,avatar:'BS',taunt:'После пятой передачи начинается мой заезд.',preLines:['Доживи до максималки.'],winLine:'Скорость всё расставила.',loseLine:'Ты удержал верх.',boss:true},
+    {id:'npc_061',name:'Ghostline',power:1700,reward:18500,unlockLevel:20,car:'Carbon Wraith',rating:99,style:'Без следа',favoriteTracks:['Тоннель','Ночной проспект'],wins:536,losses:27,avatar:'GL',taunt:'Увидишь только мои фонари.',preLines:['Не потеряй линию.'],winLine:'След исчез.',loseLine:'Ты остался рядом.',boss:true},
+    {id:'npc_062',name:'Sovereign',power:1800,reward:22500,unlockLevel:22,car:'Project Zero',rating:100,style:'Контроль дистанции',favoriteTracks:['Промзона','Портовый обход'],wins:604,losses:24,avatar:'SV',taunt:'Я не выигрываю метрами. Я забираю дистанцию.',preLines:['Считай каждый метр.'],winLine:'Дистанция принадлежит мне.',loseLine:'Ты отнял её.',boss:true},
+    {id:'npc_063',name:'Oblivion',power:1925,reward:27500,unlockLevel:24,car:'Syndicate Prototype',rating:100,style:'Без компромиссов',favoriteTracks:['Ночной проспект','Старая эстакада'],wins:681,losses:19,avatar:'OB',taunt:'После старта останется только секундомер.',preLines:['Никаких оправданий.'],winLine:'Секундомер сказал всё.',loseLine:'Запомню это время.',boss:true},
+    {id:'npc_064',name:'Carbon Prime',power:2075,reward:34000,unlockLevel:26,car:'Carbon One-Off',rating:100,style:'Эталонный',favoriteTracks:['Ночной проспект','Тоннель','Портовый обход'],wins:812,losses:14,avatar:'CP',taunt:'Добрался сюда — значит, заслужил один шанс.',preLines:['Один старт. Одна попытка.'],winLine:'Carbon District всё ещё мой.',loseLine:'Теперь район знает твоё имя.',boss:true}
   ];
   EXTRA_RIVALS.forEach(r=>{if(!opponentsDB.some(o=>String(o.id)===String(r.id)))opponentsDB.push(r);});
   const baseProfiles=[
@@ -2691,7 +2715,7 @@ async function claimPvpResults(){
   }
   window.refreshReferralDashboard=refreshReferralDashboard;window.claimReferralRewards=claimReferralRewards;window.claimFirstRaceReferralBonus=claimFirstRaceReferralBonus;
   window.copyReferralLink=async function(){const code=state.referral.code;if(!code)return;const link=location.origin+location.pathname+'?ref='+encodeURIComponent(code);try{await navigator.clipboard.writeText(link);showToast('Реферальная ссылка скопирована');}catch(_){window.prompt('Скопируйте ссылку',link);}};
-  window.renderReferrals=function(){ensureV8Screens();const root=document.getElementById('referral-content');if(!root)return;const code=state.referral.code||'СИНХРОНИЗАЦИЯ',link=state.referral.code?(location.origin+location.pathname+'?ref='+state.referral.code):'—';root.innerHTML='<div class="referral-hero"><div class="referral-code"><span>ВАШ КОД</span><b>'+escapeHtml(code)+'</b><button onclick="copyReferralLink()">'+svgIcon('copy')+' КОПИРОВАТЬ ССЫЛКУ</button></div><div class="referral-stats"><div><span>Приглашено</span><b>'+fmt(state.referral.invites||0)+'</b></div><div><span>Начислено</span><b>'+fmt(state.referral.earned||0)+' SYND</b></div><div><span>Получено</span><b>'+fmt(state.referral.totalClaimed||0)+' SYND</b></div></div></div><div class="referral-rules"><div class="v8-section-head"><b>КАК РАБОТАЕТ</b><span>5% от заработка</span></div><div class="rule-row"><b>Приглашённый</b><span>Стартовый бонус и отдельный подарок после первой завершённой гонки.</span></div><div class="rule-row"><b>Пригласивший</b><span>Получает 5% от подтверждённого сервером заработка реферала.</span></div><div class="rule-row"><b>Защита</b><span>Самореферал запрещён. Реферер привязывается один раз. Начисления хранятся в БД.</span></div></div><div class="referral-link-preview">'+escapeHtml(link)+'</div><button class="btn btn-select" onclick="claimReferralRewards();refreshReferralDashboard()">ПРОВЕРИТЬ НАЧИСЛЕНИЯ</button>';
+  window.renderReferrals=function(){ensureV8Screens();const root=document.getElementById('referral-content');if(!root)return;const code=state.referral.code||'—',link=state.referral.code?(location.origin+location.pathname+'?ref='+state.referral.code):'—';root.innerHTML='<div class="referral-hero"><div class="referral-code"><span>ВАШ КОД</span><b>'+escapeHtml(code)+'</b><button onclick="copyReferralLink()">'+svgIcon('copy')+' КОПИРОВАТЬ ССЫЛКУ</button></div><div class="referral-stats"><div><span>Приглашено</span><b>'+fmt(state.referral.invites||0)+'</b></div><div><span>Начислено</span><b>'+fmt(state.referral.earned||0)+' SYND</b></div><div><span>Получено</span><b>'+fmt(state.referral.totalClaimed||0)+' SYND</b></div></div></div><div class="referral-rules"><div class="v8-section-head"><b>КАК РАБОТАЕТ</b><span>5% от заработка</span></div><div class="rule-row"><b>Приглашённый</b><span>Стартовый бонус и отдельный подарок после первой завершённой гонки.</span></div><div class="rule-row"><b>Пригласивший</b><span>Получает 5% от подтверждённого заработка реферала.</span></div><div class="rule-row"><b>Защита</b><span>Самореферал запрещён. Пригласивший закрепляется за игроком один раз.</span></div></div><div class="referral-link-preview">'+escapeHtml(link)+'</div><button class="btn btn-select" onclick="claimReferralRewards();refreshReferralDashboard()">ПРОВЕРИТЬ НАЧИСЛЕНИЯ</button>';
   };
   const basePoll=pollBackgroundClaims;pollBackgroundClaims=function(){basePoll();if(onlineAuthReady)claimReferralRewards();};
   const baseBootstrap=bootstrapOnline;bootstrapOnline=async function(){await baseBootstrap();if(onlineAuthReady){await reconcileMarketEscrow();await syncPlayerProfile(true);await initReferralSystem();}};
@@ -3060,7 +3084,7 @@ async function claimPvpResults(){
 
   renderCases=function(){
     const root=document.getElementById('cases-list');if(!root)return;const hist=(state.caseHistory||[]).slice().reverse();
-    root.innerHTML=Object.values(CASES_V9).map(cs=>'<div class="case-v8-card"><div class="case-v8-mark">'+svgIcon('case')+'</div><div class="case-v8-body"><div class="case-v8-title"><b>'+cs.name+'</b><span>'+fmt(cs.price)+' SYND</span></div><p>Результат фиксируется сервером до запуска анимации. Указатель и награда используют один roll ID.</p><div class="case-chances">'+cs.weights.map(([r,w])=>'<span class="rar-'+r+'">'+RARITY_LABEL_V9[r]+' '+w+'%</span>').join('')+'</div><small>Server roll v10 · награда фиксируется до анимации и выдаётся по тому же roll ID.</small><button class="btn btn-gold" '+(state.coins<cs.price||state.caseOpening?'disabled':'')+' onclick="openCase(\''+cs.id+'\')">ОТКРЫТЬ</button></div></div>').join('')+'<div class="case-history"><div class="v8-section-head"><b>ИСТОРИЯ ОТКРЫТИЙ</b><span>'+hist.length+'</span></div>'+(hist.length?hist.slice(0,12).map(x=>'<div class="history-row"><span class="rar-'+x.rarity+'">'+RARITY_LABEL_V9[x.rarity]+'</span><b>'+escapeHtml(x.label)+'</b><small>'+new Date(x.ts).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})+'</small></div>').join(''):'<div class="empty-note">Кейсы ещё не открывались.</div>')+'</div>';
+    root.innerHTML=Object.values(CASES_V9).map(cs=>'<div class="case-v8-card"><div class="case-v8-mark">'+svgIcon('case')+'</div><div class="case-v8-body"><div class="case-v8-title"><b>'+cs.name+'</b><span>'+fmt(cs.price)+' SYND</span></div><p>Награда определяется до вращения: предмет под указателем всегда совпадает с полученным призом.</p><div class="case-chances">'+cs.weights.map(([r,w])=>'<span class="rar-'+r+'">'+RARITY_LABEL_V9[r]+' '+w+'%</span>').join('')+'</div><small>Шансы прозрачны и одинаковы для каждого открытия.</small><button class="btn btn-gold" '+(state.coins<cs.price||state.caseOpening?'disabled':'')+' onclick="openCase(\''+cs.id+'\')">ОТКРЫТЬ</button></div></div>').join('')+'<div class="case-history"><div class="v8-section-head"><b>ИСТОРИЯ ОТКРЫТИЙ</b><span>'+hist.length+'</span></div>'+(hist.length?hist.slice(0,12).map(x=>'<div class="history-row"><span class="rar-'+x.rarity+'">'+RARITY_LABEL_V9[x.rarity]+'</span><b>'+escapeHtml(x.label)+'</b><small>'+new Date(x.ts).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})+'</small></div>').join(''):'<div class="empty-note">Кейсы ещё не открывались.</div>')+'</div>';
   };
 
   openCase=async function(caseId){
@@ -3074,7 +3098,7 @@ async function claimPvpResults(){
       if(!rollId)throw new Error('server roll id missing');if(state.coins<price)throw new Error('Недостаточно SYND для подтверждения server roll');
       state.coins-=price;state.stats.totalSpent+=price;state.stats.casesOpened++;saveState();updateHeader();
       const strip=[];for(let i=0;i<43;i++)strip.push(i===CASE_TARGET_INDEX?prize:visualPrize(cs));
-      ensureCaseModalV9();const modal=document.getElementById('case-open-modal');modal.classList.add('show');modal.innerHTML='<div class="case-open-shell"><div class="case-open-head"><span>'+cs.name+'</span><b>SERVER ROLL · '+escapeHtml(rollId.slice(0,8).toUpperCase())+'</b></div><div class="case-reel-window" id="case-reel-window"><div class="case-pointer-v9"></div><div class="case-center-line"></div><div class="case-reel-track" id="case-reel-track">'+strip.map(v9CaseItemHtml).join('')+'</div></div><div class="case-open-status" id="case-open-status">Сервер зафиксировал награду · прокрутка...</div></div>';
+      ensureCaseModalV9();const modal=document.getElementById('case-open-modal');modal.classList.add('show');modal.innerHTML='<div class="case-open-shell"><div class="case-open-head"><span>'+cs.name+'</span><b>CARBON DRAW</b></div><div class="case-reel-window" id="case-reel-window"><div class="case-pointer-v9"></div><div class="case-center-line"></div><div class="case-reel-track" id="case-reel-track">'+strip.map(v9CaseItemHtml).join('')+'</div></div><div class="case-open-status" id="case-open-status">Результат определён · прокрутка...</div></div>';
       const track=document.getElementById('case-reel-track'),win=document.getElementById('case-reel-window');
       const finish=async()=>{if(state.caseOpening!==true)return;grantServerCasePrize(prize,cs,rollId);await markCaseClaimed(rollId);const st=document.getElementById('case-open-status');if(st)st.innerHTML='<span class="rar-'+prize.rarity+'">'+RARITY_LABEL_V9[prize.rarity]+'</span><b>'+escapeHtml(prize.label)+'</b><button class="btn btn-select" onclick="closeCaseModal()">ЗАБРАТЬ</button>';state.caseOpening=false;saveState();renderCases();};
       requestAnimationFrame(()=>requestAnimationFrame(()=>{
@@ -3082,7 +3106,7 @@ async function claimPvpResults(){
         const target=win.clientWidth/2-(item.offsetLeft+item.offsetWidth/2);track.style.transform='translate3d('+target+'px,0,0)';
         let done=false;const complete=()=>{if(done)return;done=true;finish();};track.addEventListener('transitionend',complete,{once:true});setTimeout(complete,3600);
       }));
-    }catch(e){state.caseOpening=false;console.warn('case roll failed',e);showToast('Кейс не открыт: '+safeText(e?.message||'ошибка сервера','ошибка сервера',90));renderCases();}
+    }catch(e){state.caseOpening=false;console.warn('case roll failed',e);showToast('Не удалось открыть кейс. Попробуйте ещё раз.');renderCases();}
   };
 
   /* ---------- SVG SLOT MACHINE 9 ---------- */
@@ -3136,18 +3160,18 @@ async function claimPvpResults(){
 
   function ensureV9Screens(){
     const main=document.getElementById('main-scroll');if(!main)return;
-    if(!document.getElementById('screen-friends')){const s=document.createElement('div');s.id='screen-friends';s.className='screen';s.innerHTML='<div class="back-link" onclick="switchTab(\'profile\')">← Профиль</div><div class="section-title"><span>Друзья</span></div><div class="social-search-v9"><input id="friend-query-v9" maxlength="90" placeholder="ID игрока или @telegram_login"><button class="btn btn-select" onclick="sendFriendRequest()">ДОБАВИТЬ</button></div><div id="friends-content-v9" class="list-container"></div>';main.appendChild(s);}
+    if(!document.getElementById('screen-friends')){const s=document.createElement('div');s.id='screen-friends';s.className='screen';s.innerHTML='<div class="back-link" onclick="switchTab(\'profile\')">← Профиль</div><div class="section-title"><span>Друзья</span></div><div class="social-search-v9"><input id="friend-query-v9" maxlength="90" placeholder="ID или @username"><button class="btn btn-select" onclick="sendFriendRequest()">ДОБАВИТЬ</button></div><div id="friends-content-v9" class="list-container"></div>';main.appendChild(s);}
     if(!document.getElementById('screen-clans')){const s=document.createElement('div');s.id='screen-clans';s.className='screen';s.innerHTML='<div class="back-link" onclick="switchTab(\'profile\')">← Профиль</div><div class="section-title"><span>Кланы</span></div><div id="clan-content-v9" class="list-container"></div><div class="section-title clan-ranking-head-v9"><span>Рейтинг кланов</span></div><div class="clan-rank-tabs-v9"><button class="chip-btn active" id="clan-rank-global-v9" onclick="setClanRankMode(\'global\')">ГЛОБАЛЬНЫЙ</button><button class="chip-btn" id="clan-rank-division-v9" onclick="setClanRankMode(\'division\')">ДИВИЗИОН</button></div><div id="clan-leaderboard-v9" class="list-container"></div>';main.appendChild(s);}
   }
   let clanRankMode='global',currentClanDivision='Мантика';
   function onlineFailureMessageV12(code='',fallback='Серверная сессия недоступна'){
     code=String(code||window.__AUTOSYNDICATE_AUTH_ERROR__?.code||'');
-    if(code==='DATABASE_MIGRATION_REQUIRED')return'База не обновлена. Выполни schema_v12_2_FULL.sql';
-    if(code==='SERVER_CONFIG_INVALID')return'Не настроены Environment Variables на Vercel';
-    if(code==='TELEGRAM_INITDATA_MISSING')return'Открой игру через Mini App кнопкой бота';
-    if(code==='TELEGRAM_AUTH_INVALID')return'Telegram-авторизация отклонена. Проверь токен бота';
+    if(code==='DATABASE_MIGRATION_REQUIRED')return'Онлайн-сервисы временно недоступны';
+    if(code==='SERVER_CONFIG_INVALID')return'Онлайн-сервисы временно недоступны';
+    if(code==='TELEGRAM_INITDATA_MISSING')return'Откройте AutoSyndicate через кнопку в Telegram';
+    if(code==='TELEGRAM_AUTH_INVALID')return'Не удалось подтвердить Telegram-профиль';
     if(code==='PLAYER_BANNED')return'Аккаунт заблокирован';
-    if(code==='UNAUTHORIZED')return'Сессия истекла. Переоткрой Mini App';
+    if(code==='UNAUTHORIZED')return'Сессия истекла. Откройте игру заново';
     return fallback;
   }
   async function socialApi(path,method='GET',body=null,feature='Социальные функции'){
@@ -3159,7 +3183,7 @@ async function claimPvpResults(){
     if(!response.ok){
       const raw=String(payload?.error||'');
       const code=String(payload?.code||'');
-      const human=code?onlineFailureMessageV12(code,raw||('Сервер отклонил запрос '+response.status)):(raw==='unauthorized'?'Сессия истекла. Переоткрой Mini App':raw==='player banned'?'Аккаунт заблокирован':raw||('Сервер отклонил запрос '+response.status));
+      const human=code?onlineFailureMessageV12(code,raw||'Действие временно недоступно'):(raw==='unauthorized'?'Сессия истекла. Переоткрой Mini App':raw==='player banned'?'Аккаунт заблокирован':raw||'Действие временно недоступно');
       throw new Error(human);
     }
     return payload;
@@ -3171,7 +3195,7 @@ async function claimPvpResults(){
   window.removeFriend=async function(id){try{await socialApi('/api/social/friends','POST',{action:'remove',friendshipId:Number(id)},'Друзья');await loadFriendsV9();}catch(e){showToast(safeText(e?.message||'Ошибка','Ошибка',100));}};
   async function loadFriendsV9(){
     const root=document.getElementById('friends-content-v9');if(!root)return;root.innerHTML='<div class="empty-note">Загрузка...</div>';
-    try{const payload=await socialApi('/api/social/friends','GET',null,'Друзья');const rows=Array.isArray(payload?.data)?payload.data:[],incoming=rows.filter(x=>x.status==='pending'&&x.recipient_id===state.playerId),accepted=rows.filter(x=>x.status==='accepted'),outgoing=rows.filter(x=>x.status==='pending'&&x.requester_id===state.playerId);root.innerHTML='<div class="v9-section-head"><b>ДРУЗЬЯ</b><span>'+accepted.length+'</span></div>'+friendRows(accepted,'accepted')+'<div class="v9-section-head"><b>ВХОДЯЩИЕ</b><span>'+incoming.length+'</span></div>'+friendRows(incoming,'incoming')+'<div class="v9-section-head"><b>ИСХОДЯЩИЕ</b><span>'+outgoing.length+'</span></div>'+friendRows(outgoing,'outgoing');}catch(e){root.innerHTML='<div class="empty-note">Не удалось загрузить друзей: '+escapeHtml(e.message)+'</div>';}
+    try{const payload=await socialApi('/api/social/friends','GET',null,'Друзья');const rows=Array.isArray(payload?.data)?payload.data:[],incoming=rows.filter(x=>x.status==='pending'&&x.recipient_id===state.playerId),accepted=rows.filter(x=>x.status==='accepted'),outgoing=rows.filter(x=>x.status==='pending'&&x.requester_id===state.playerId);root.innerHTML='<div class="v9-section-head"><b>ДРУЗЬЯ</b><span>'+accepted.length+'</span></div>'+friendRows(accepted,'accepted')+'<div class="v9-section-head"><b>ВХОДЯЩИЕ</b><span>'+incoming.length+'</span></div>'+friendRows(incoming,'incoming')+'<div class="v9-section-head"><b>ИСХОДЯЩИЕ</b><span>'+outgoing.length+'</span></div>'+friendRows(outgoing,'outgoing');}catch(e){console.warn('friends unavailable',e);root.innerHTML='<div class="empty-note">Друзья сейчас недоступны. Попробуйте ещё раз позже.</div>';}
   }
   function friendRows(rows,mode){if(!rows.length)return'<div class="empty-note compact-v9">Нет записей</div>';return rows.map(r=>{const fallback=r.requester_id===state.playerId?{id:r.recipient_id,name:r.recipient_name}:{id:r.requester_id,name:r.requester_name};const p=r.other_profile||fallback,username=p?.telegram_username?'@'+p.telegram_username:'',meta=[p?.id||fallback.id,username,p?.current_car_name||'',p?.rating?('RATING '+p.rating):''].filter(Boolean).join(' · '),online=r.other_online===true;return '<div class="social-row-v9"><div class="friend-main-v12"><b><i class="friend-online-v12 '+(online?'on':'')+'"></i>'+escapeHtml(p?.name||fallback.name||fallback.id)+'</b><span>'+escapeHtml(meta)+'</span></div><div class="social-actions-v9">'+(mode==='accepted'?'<button class="btn btn-ghost" onclick="openPublicProfileByName('+jsArg(p?.id||fallback.id)+')">ПРОФИЛЬ</button>':'')+(mode==='incoming'?'<button class="btn btn-select" onclick="acceptFriendRequest('+r.id+')">ПРИНЯТЬ</button>':'')+(mode!=='outgoing'?'<button class="btn btn-ghost" onclick="removeFriend('+r.id+')">'+(mode==='accepted'?'УДАЛИТЬ':'ОТКЛОНИТЬ')+'</button>':'<span class="pending-v9">ОЖИДАНИЕ</span>')+'</div></div>';}).join('');}
 
@@ -3191,44 +3215,35 @@ async function claimPvpResults(){
       if(!membership){root.innerHTML='<div class="clan-create-v9"><b>СОЗДАТЬ КЛАН</b><span>Название уникальное. После создания ты становишься лидером.</span><input id="clan-name-v9" maxlength="24" placeholder="Название клана"><button class="btn btn-select" onclick="createClanV9()">СОЗДАТЬ</button></div>'+renderClanInvites(invites);currentClanDivision='Мантика';loadClanLeaderboardV9();return;}
       const clan=relationOne(membership.clans);currentClanDivision=lb?.division||'Мантика';const isOwner=membership.role==='owner';
       root.innerHTML='<div class="clan-hero-v9"><div><span>КЛАН</span><b>'+escapeHtml(clan.name||'Клан')+'</b><small>'+escapeHtml(currentClanDivision)+' · '+fmt(lb?.score||0)+' pts · #'+(lb?.global_rank||'—')+'</small></div><button class="btn btn-ghost" onclick="leaveClanV9()">ВЫЙТИ</button></div>'+(isOwner?'<div class="social-search-v9"><input id="clan-invite-v9" maxlength="90" placeholder="ID или @login друга"><button class="btn btn-select" onclick="inviteClanV9()">ПРИГЛАСИТЬ</button></div>':'')+'<div class="v9-section-head"><b>СОСТАВ</b><span>'+members.length+'</span></div>'+members.map(m=>{const profile=relationOne(m.player_profiles);return '<div class="clan-member-v9"><div><b>'+escapeHtml(m.player_name)+'</b><span>'+escapeHtml(String(m.role||'member').toUpperCase())+' · RATING '+(profile?.rating||0)+' · '+escapeHtml(profile?.current_car_name||'машина не указана')+'</span></div>'+(isOwner&&m.role!=='owner'?'<button class="btn btn-ghost" onclick="kickClanMemberV9('+jsArg(m.member_uid)+')">ИСКЛЮЧИТЬ</button>':'')+'</div>';}).join('')+renderClanInvites(invites);loadClanLeaderboardV9();
-    }catch(e){root.innerHTML='<div class="empty-note">Не удалось загрузить клан: '+escapeHtml(e.message)+'</div>';}
+    }catch(e){console.warn('clan unavailable',e);root.innerHTML='<div class="empty-note">Клановый раздел сейчас недоступен.</div>';}
   }
   function renderClanInvites(invites){if(!invites.length)return'';return '<div class="v9-section-head"><b>ПРИГЛАШЕНИЯ</b><span>'+invites.length+'</span></div>'+invites.map(i=>{const clan=relationOne(i.clans);return '<div class="social-row-v9"><div><b>'+escapeHtml(clan?.name||'Клан')+'</b><span>Пригласил: '+escapeHtml(i.inviter_name||'Игрок')+'</span></div><button class="btn btn-select" onclick="acceptClanInviteV9('+i.id+')">ВСТУПИТЬ</button></div>';}).join('');}
   async function loadClanLeaderboardV9(){
-    const root=document.getElementById('clan-leaderboard-v9');if(!root)return;try{const rows=(clanRankMode==='division'?clanLeaderboardCache.filter(r=>r.division===currentClanDivision):clanLeaderboardCache).slice(0,100);root.innerHTML=rows.length?'<div class="clan-table-v9"><div class="clan-table-row-v9 head"><span>#</span><b>КЛАН</b><span>ЛИГА</span><span>СОСТАВ</span><span>PTS</span></div>'+rows.map((r,i)=>'<div class="clan-table-row-v9"><span>'+(clanRankMode==='global'?(r.global_rank||i+1):(r.division_rank||i+1))+'</span><b>'+escapeHtml(r.name)+'</b><span>'+escapeHtml(r.division)+'</span><span>'+r.members+'</span><strong>'+fmt(r.score)+'</strong></div>').join('')+'</div>':'<div class="empty-note">В этом рейтинге пока нет кланов.</div>';}catch(e){root.innerHTML='<div class="empty-note">Рейтинг недоступен: '+escapeHtml(e.message)+'</div>';}
+    const root=document.getElementById('clan-leaderboard-v9');if(!root)return;try{const rows=(clanRankMode==='division'?clanLeaderboardCache.filter(r=>r.division===currentClanDivision):clanLeaderboardCache).slice(0,100);root.innerHTML=rows.length?'<div class="clan-table-v9"><div class="clan-table-row-v9 head"><span>#</span><b>КЛАН</b><span>ЛИГА</span><span>СОСТАВ</span><span>PTS</span></div>'+rows.map((r,i)=>'<div class="clan-table-row-v9"><span>'+(clanRankMode==='global'?(r.global_rank||i+1):(r.division_rank||i+1))+'</span><b>'+escapeHtml(r.name)+'</b><span>'+escapeHtml(r.division)+'</span><span>'+r.members+'</span><strong>'+fmt(r.score)+'</strong></div>').join('')+'</div>':'<div class="empty-note">В этом рейтинге пока нет кланов.</div>';}catch(e){console.warn('clan leaderboard unavailable',e);root.innerHTML='<div class="empty-note">Рейтинг обновляется. Загляните немного позже.</div>';}
   }
 
   function serverSyncPresentationV12(){
-    const issue=window.__AUTOSYNDICATE_AUTH_ERROR__||null;
-    const connected=onlineAuthReady&&serverReachable;
-    const needsMigration=connected&&serverSchemaVersion>=0&&serverSchemaVersion<12;
-    if(connected&&!needsMigration)return{connected:true,title:'СЕРВЕР ПОДКЛЮЧЕН',detail:escapeHtml(state.playerId||'Telegram session')};
-    if(needsMigration)return{connected:false,title:'БАЗА НЕ ОБНОВЛЕНА',detail:'Запусти supabase/schema_v12_2_FULL.sql'};
-    if(!serverReachable)return{connected:false,title:'СЕРВЕР НЕДОСТУПЕН',detail:'Vercel API не отвечает. Проверь deployment и Runtime Logs.'};
-    const code=String(issue?.code||'');
-    if(code==='DATABASE_MIGRATION_REQUIRED')return{connected:false,title:'БАЗА НЕ ГОТОВА',detail:'Запусти один файл: supabase/schema_v12_2_FULL.sql'};
-    if(code==='SERVER_CONFIG_INVALID')return{connected:false,title:'VERCEL ENV НЕ НАСТРОЕНЫ',detail:'Проверь server-only переменные в Vercel → Environment Variables'};
-    if(code==='TELEGRAM_INITDATA_MISSING')return{connected:false,title:'НЕТ TELEGRAM-СЕССИИ',detail:'Открой игру кнопкой Mini App из @AutoSyndicateBot'};
-    if(code==='TELEGRAM_AUTH_INVALID')return{connected:false,title:'TELEGRAM-АВТОРИЗАЦИЯ ОТКЛОНЕНА',detail:'Проверь TELEGRAM_BOT_TOKEN и что Mini App открыт именно этим ботом'};
-    if(code==='SERVER_SESSION_MISSING')return{connected:false,title:'СЕССИЯ НЕ СОЗДАНА',detail:'Сервер принял Telegram auth, но cookie не сохранилась'};
-    return{connected:false,title:'ПОДКЛЮЧЕНИЕ НЕ ЗАВЕРШЕНО',detail:'Нажми «ПОВТОРИТЬ». Если не поможет — проверь Vercel ENV и full SQL migration.'};
+    const connected=onlineAuthReady&&serverReachable&&serverSchemaVersion>=12;
+    return connected
+      ? {connected:true,title:'ОНЛАЙН',detail:'Профиль синхронизирован'}
+      : {connected:false,title:'СЕТЬ НЕДОСТУПНА',detail:'Онлайн-функции восстановятся автоматически'};
   }
 
   window.retryServerSync=async function(){
     onlineAuthReady=false;serverReachable=true;
     const ok=await recoverServerSession()||await ensureOnlineAuth();
-    if(ok){const schemaOk=await checkServerSync();await syncPlayerProfile(true);if(schemaOk)showToast('Сервер подключен');}
+    if(ok){const schemaOk=await checkServerSync();await syncPlayerProfile(true);if(schemaOk)showToast('Онлайн восстановлен');}
     renderProfile();
   };
   const v8RenderProfile=renderProfile;
   renderProfile=function(){
-    v8RenderProfile();ensureV9Screens();const grid=document.querySelector('#screen-profile .hub-grid');if(grid&&!document.getElementById('hub-friends-v9')){const a=document.createElement('div');a.className='hub-card';a.id='hub-friends-v9';a.onclick=()=>switchTab('friends');a.innerHTML='<div class="ic">'+svgIcon('users')+'</div><div class="lbl">Друзья</div><div class="sub">ID и Telegram login</div>';grid.appendChild(a);const b=document.createElement('div');b.className='hub-card';b.id='hub-clans-v9';b.onclick=()=>switchTab('clans');b.innerHTML='<div class="ic">'+svgIcon('shield')+'</div><div class="lbl">Кланы</div><div class="sub">Состав и рейтинг</div>';grid.appendChild(b);}
+    v8RenderProfile();ensureV9Screens();const grid=document.querySelector('#screen-profile .hub-grid');if(grid&&!document.getElementById('hub-friends-v9')){const a=document.createElement('div');a.className='hub-card';a.id='hub-friends-v9';a.onclick=()=>switchTab('friends');a.innerHTML='<div class="ic">'+svgIcon('users')+'</div><div class="lbl">Друзья</div><div class="sub">Поиск и заявки</div>';grid.appendChild(a);const b=document.createElement('div');b.className='hub-card';b.id='hub-clans-v9';b.onclick=()=>switchTab('clans');b.innerHTML='<div class="ic">'+svgIcon('shield')+'</div><div class="lbl">Кланы</div><div class="sub">Состав и рейтинг</div>';grid.appendChild(b);}
     const hero=document.querySelector('#screen-profile .profile-hero');if(hero&&!document.getElementById('profile-race-stats-v9')){const car=activeCar(),box=document.createElement('div');box.id='profile-race-stats-v9';box.className='profile-race-stats-v9';box.innerHTML='<span>RATING <b>'+playerRating()+'</b></span><span>0–100 <b>'+(state.stats.best0100?state.stats.best0100.toFixed(2)+' s':'—')+'</b></span><span>МАШИНА <b>'+escapeHtml(car?.name||'—')+'</b></span>';hero.appendChild(box);}
-    if(hero){let sync=document.getElementById('server-sync-v12');if(!sync){sync=document.createElement('div');sync.id='server-sync-v12';sync.className='server-sync-v12';hero.appendChild(sync);}const view=serverSyncPresentationV12();sync.innerHTML='<span class="sync-dot-v12 '+(view.connected?'on':'off')+'"></span><div><b>'+view.title+'</b><small>'+view.detail+'</small></div>'+(!view.connected?'<button onclick="retryServerSync()">ПОВТОРИТЬ</button>':'');}
+    document.getElementById('server-sync-v12')?.remove();
   };
 
   const v8SwitchTab=switchTab;
-  switchTab=function(tabId){ensureV9Screens();v8SwitchTab(tabId);if(tabId==='slots')initSlotsV9();if(tabId==='friends')loadFriendsV9();if(tabId==='clans')loadClanV9();if(tabId==='cases'){reconcileCaseRolls();}};
+  switchTab=function(tabId){ensureV9Screens();if(tabId!=='chat'&&chatPollTimer){clearInterval(chatPollTimer);chatPollTimer=null;}v8SwitchTab(tabId);if(tabId==='slots')initSlotsV9();if(tabId==='friends')loadFriendsV9();if(tabId==='clans')loadClanV9();if(tabId==='cases'){reconcileCaseRolls();}};
 
   // Run reconciliation after online bootstrap has had time to authenticate.
   const v8PollBackgroundClaims=pollBackgroundClaims;
@@ -3468,12 +3483,17 @@ if (typeof window !== 'undefined') {
     saveState();
   }
   if(Array.isArray(bootstrap.opponents) && bootstrap.opponents.length){
-    opponentsDB.splice(0,opponentsDB.length,...bootstrap.opponents.map((o:any)=>({
-      id:o.id,name:String(o.name||'Соперник'),power:Number(o.power)||200,reward:Number(o.reward)||0,unlockLevel:Number(o.unlockLevel)||1,
-      car:String(o.car||'Street build'),rating:Number(o.rating)||50,style:String(o.style||'Сбалансированный'),favoriteTracks:Array.isArray(o.favoriteTracks)?o.favoriteTracks:['Промзона'],
-      wins:Number(o.wins)||0,losses:Number(o.losses)||0,avatar:String(o.avatar||'AI'),taunt:String(o.taunt||''),preLines:Array.isArray(o.preLines)?o.preLines:[],
-      winLine:String(o.winLine||''),loseLine:String(o.loseLine||''),boss:o.boss===true
-    })));
+    const merged=new Map(opponentsDB.map((o:any)=>[String(o.id),o]));
+    bootstrap.opponents.forEach((o:any)=>{
+      const normalized={
+        id:o.id,name:String(o.name||'Соперник'),power:Number(o.power)||200,reward:Number(o.reward)||0,unlockLevel:Number(o.unlockLevel)||1,
+        car:String(o.car||'Street build'),rating:Number(o.rating)||50,style:String(o.style||'Сбалансированный'),favoriteTracks:Array.isArray(o.favoriteTracks)?o.favoriteTracks:['Промзона'],
+        wins:Number(o.wins)||0,losses:Number(o.losses)||0,avatar:String(o.avatar||'AI'),taunt:String(o.taunt||''),preLines:Array.isArray(o.preLines)?o.preLines:[],
+        winLine:String(o.winLine||''),loseLine:String(o.loseLine||''),boss:o.boss===true
+      };
+      merged.set(String(o.id),{...(merged.get(String(o.id))||{}),...normalized});
+    });
+    opponentsDB.splice(0,opponentsDB.length,...Array.from(merged.values()));
   }
 
   let duelFilter='all';
@@ -3515,7 +3535,7 @@ if (typeof window !== 'undefined') {
         return Math.abs(Number(a.power)-myPower)-Math.abs(Number(b.power)-myPower);
       });
     }
-    const visible=state.duelSub==='tour'?pool.slice(0,3):pool.slice(0,12);
+    const visible=state.duelSub==='tour'?pool.slice(0,3):pool.slice(0,16);
     if(summary){
       summary.innerHTML='<div class="summary-main"><div class="summary-car">'+escapeHtml(String(car.name).split(/\s+/).slice(0,2).map((x:any)=>x[0]).join('').slice(0,3))+'</div><div><b>'+escapeHtml(car.name)+'</b><span>Текущая сборка · '+escapeHtml(car.tier)+'</span></div></div><strong>'+fmt(myPower)+'<small>л.с.</small></strong>';
     }

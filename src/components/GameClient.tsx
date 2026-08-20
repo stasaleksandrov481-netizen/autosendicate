@@ -42,6 +42,6 @@ export function GameClient() {
   return <>
     <div id="game-root" suppressHydrationWarning dangerouslySetInnerHTML={{ __html: GAME_SHELL }} />
     {duelCode && <DuelRoomClient code={duelCode} onClose={() => setDuelCode(null)} />}
-    {blocked && <div className="account-blocked"><div><span>ACCESS REVOKED</span><b>Доступ к AutoSyndicate ограничен</b><p>Аккаунт заблокирован администрацией. Серверные операции и игровые комнаты недоступны.</p></div></div>}
+    {blocked && <div className="account-blocked"><div><span>ДОСТУП ОГРАНИЧЕН</span><b>Участие в AutoSyndicate приостановлено</b><p>Если вы считаете это ошибкой, обратитесь в поддержку проекта.</p></div></div>}
   </>;
 }

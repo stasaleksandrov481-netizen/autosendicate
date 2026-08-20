@@ -176,7 +176,7 @@ export function DuelRoomClient({ code, onClose }: { code: string; onClose: () =>
         </div>}
 
         {data.room.status === 'racing' && <div className="duel-countdown-card">
-          {countdown && countdown > 0 ? <><span>СИНХРОНИЗАЦИЯ СТАРТА</span><b>{countdown}</b><small>Обе комнаты используют один server start_at</small></> : myResult ? <><span>ВАШ РЕЗУЛЬТАТ ПРИНЯТ</span><b>{(myResult.elapsedMs / 1000).toFixed(3)}</b><small>{otherResult ? 'Соперник финишировал' : 'Ожидаем результат соперника'}</small></> : <><span>RACE SESSION</span><b>GO</b><small>Заезд открыт в игровом экране</small></>}
+          {countdown && countdown > 0 ? <><span>СТАРТ ЧЕРЕЗ</span><b>{countdown}</b><small>Приготовьтесь к дуэли</small></> : myResult ? <><span>ВАШ РЕЗУЛЬТАТ ПРИНЯТ</span><b>{(myResult.elapsedMs / 1000).toFixed(3)}</b><small>{otherResult ? 'Соперник финишировал' : 'Ожидаем результат соперника'}</small></> : <><span>ДУЭЛЬ АКТИВНА</span><b>GO</b><small>Финишируйте первым</small></>}
         </div>}
 
         {finished && <div className={`duel-finish-card ${winnerLabel === 'ПОБЕДА' ? 'win' : winnerLabel === 'ПОРАЖЕНИЕ' ? 'loss' : ''}`}>

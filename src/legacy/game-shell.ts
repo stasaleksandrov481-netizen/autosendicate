@@ -4,9 +4,9 @@ export const GAME_SHELL = `
   <div class="pl-grid"></div>
   <div class="pl-scan"></div>
   <div class="pl-logo">AUTO<span>SYNDICATE</span></div>
-  <div class="pl-stage" id="pl-stage">CARBON DISTRICT // BOOT</div>
+  <div class="pl-stage" id="pl-stage">CARBON DISTRICT</div>
   <div class="pl-bar-bg"><div class="pl-bar-fill" id="pl-bar"></div></div>
-  <div class="pl-row"><span class="pl-sub" id="pl-sub">Проверка гаража</span><b id="pl-percent">0%</b></div>
+  <div class="pl-row"><span class="pl-sub" id="pl-sub">Подготовка улиц</span><b id="pl-percent">0%</b></div>
   <div class="pl-tip" id="pl-tip">Идеальный SHIFT сохраняет больше оборотов после переключения.</div>
 </div>
 
@@ -14,7 +14,7 @@ export const GAME_SHELL = `
 <header>
   <div class="header-left">
     <div class="avatar-mini" id="header-avatar" onclick="switchTab('profile')">Г</div>
-    <div class="logo" onclick="tapLogo()">Auto<span>Syndicate</span></div>
+    <div class="brand-lockup" onclick="tapLogo()"><div class="logo">Auto<span>Syndicate</span></div><div class="brand-sub">CARBON DISTRICT</div></div>
   </div>
   <div class="header-stats">
     <div class="rep-badge">LVL <span id="lvl-display">1</span></div>
@@ -55,8 +55,8 @@ export const GAME_SHELL = `
   <!-- ДУЭЛЬ: выбор соперника -->
   <div id="screen-duel-select" class="screen duel-screen-v11">
     <div class="duel-v11-heading">
-      <div><span>STREET NETWORK</span><h2>Уличные дуэли</h2><p>Выбирай соперника под текущую сборку. Чем выше риск, тем больше награда.</p></div>
-      <div class="duel-v11-live"><i></i><b>LIVE</b><span id="duel-online-label">матчмейкинг активен</span></div>
+      <div><span>CARBON LEAGUE</span><h2>Дуэльная сетка</h2><p>Подбери соперника под свою сборку и забери его позицию в уличной иерархии.</p></div>
+      <div class="duel-v11-live"><i></i><b>LIVE</b><span id="duel-online-label">поиск соперников</span></div>
     </div>
     <div class="subtabs duel-v11-tabs">
       <div class="subtab-btn active" id="dsub-normal" onclick="switchDuelSub('normal')">Сетка</div>
@@ -96,7 +96,7 @@ export const GAME_SHELL = `
     <div class="section-title"><span>Банк синдиката</span></div>
     <div class="sell-picker">
       <div class="pre-race-line"><span>Баланс</span><b id="bank-balance" style="color:var(--gold);">0</b></div>
-      <div class="pre-race-line"><span>Твой ID (скажи его тому, кто хочет перевести тебе)</span></div>
+      <div class="pre-race-line"><span>Игровой ID для переводов</span></div>
       <div class="listing-meta" id="bank-my-id" style="user-select:all;word-break:break-all;">—</div>
     </div>
     <div class="sell-picker">
@@ -105,7 +105,7 @@ export const GAME_SHELL = `
       <input class="chat-input" id="bank-amount" type="number" placeholder="Сумма, " style="border-radius:10px;margin-bottom:8px;width:100%;">
       <button class="big-btn" onclick="sendBankTransfer()">Отправить</button>
       <div class="chat-status" id="bank-send-status" style="margin-top:8px;"></div>
-      <div class="empty-note" style="padding:8px 0 0;text-align:left;font-size:10px;">Лимит: до 800  за перевод, до 2000  в сутки, одному игроку — не чаще раза в 10 минут.</div>
+      <div class="empty-note transfer-limit-note">До 800 SYND за перевод · дневной лимит 2 000 SYND</div>
     </div>
     <div class="section-title"><span>История</span></div>
     <div class="list-container" id="bank-log"></div>
@@ -212,9 +212,13 @@ export const GAME_SHELL = `
   <!-- ПРОФИЛЬ -->
   <div id="screen-profile" class="screen">
     <div class="profile-hero">
-      <div class="avatar-circle" id="avatar-letter">Г</div>
-      <div class="profile-name" id="profile-name">Гонщик</div>
-      <div class="profile-rep">Уличный авторитет: LVL <span id="profile-lvl">1</span></div>
+      <div class="profile-avatar-block"><div class="avatar-circle" id="avatar-letter">Г</div><span>DRIVER</span></div>
+      <div class="profile-identity">
+        <div class="profile-kicker">CARBON DISTRICT</div>
+        <div class="profile-name" id="profile-name">Гонщик</div>
+        <div class="profile-rep">Уличный рейтинг · LVL <span id="profile-lvl">1</span></div>
+      </div>
+      <div class="profile-signature">AS</div>
     </div>
     <div class="xp-wrap">
       <div class="xp-top"><span>Опыт</span><span id="xp-text">0/100</span></div>
@@ -243,7 +247,7 @@ export const GAME_SHELL = `
       <div class="hub-card" onclick="switchTab('market')"><div class="ic"></div><div class="lbl">Рынок</div><div class="sub">Игроки продают</div></div>
       <div class="hub-card" onclick="switchTab('chat')"><div class="ic"></div><div class="lbl">Чат</div><div class="sub">Синдикат онлайн</div></div>
       <div class="hub-card" onclick="switchTab('bank')"><div class="ic"></div><div class="lbl">Банк</div><div class="sub">Переводы</div></div>
-      <div class="hub-card" onclick="switchTab('settings')"><div class="ic"></div><div class="lbl">Настройки</div><div class="sub">Сейв/сброс</div></div>
+      <div class="hub-card" onclick="switchTab('settings')"><div class="ic"></div><div class="lbl">Настройки</div><div class="sub">Игра и управление</div></div>
     </div>
     <div class="sell-picker" id="license-status-box" style="margin-top:12px;"></div>
     <div class="save-row">
@@ -284,7 +288,7 @@ export const GAME_SHELL = `
   <div id="screen-leaderboard" class="screen">
     <div class="back-link" onclick="switchTab('profile')">← Профиль</div>
     <div class="section-title"><span>Игроки синдиката</span></div>
-    <div class="player-lb-head">Только реальные игроки, которые запускали игру. Профиль показывает баланс, уровень и весь гараж.</div>
+    <div class="player-lb-head">Глобальная таблица сезона · лучшие пилоты Carbon District</div>
     <div class="list-container" id="lb-list"></div>
   </div>
 
@@ -328,12 +332,12 @@ export const GAME_SHELL = `
     <div class="setting-row"><div><b>Звук</b><span>Звуковые эффекты интерфейса</span></div><div class="switch" id="set-sound" onclick="toggleSetting('sound')"><div class="knob"></div></div></div>
     <div class="setting-row"><div><b>Анимации</b><span>Эффекты выигрыша и переходов</span></div><div class="switch" id="set-anim" onclick="toggleSetting('animations')"><div class="knob"></div></div></div>
     <div class="setting-row"><div><b>Тактильная отдача</b><span>Вибрация Telegram при переключениях и действиях</span></div><div class="switch" id="set-haptics" onclick="toggleSetting('haptics')"><div class="knob"></div></div></div>
-    <div class="setting-row"><div><b>Сниженная анимация</b><span>Минимум движения для слабых устройств</span></div><div class="switch" id="set-reduced-motion" onclick="toggleSetting('reducedMotion')"><div class="knob"></div></div></div>
+    <div class="setting-row"><div><b>Режим производительности</b><span>Снижает нагрузку эффектов и сохраняет плавность</span></div><div class="switch" id="set-reduced-motion" onclick="toggleSetting('reducedMotion')"><div class="knob"></div></div></div>
     <div class="setting-row"><div><b>Компактный HUD</b><span>Меньше подсказок во время заезда</span></div><div class="switch" id="set-compact-hud" onclick="toggleSetting('compactHud')"><div class="knob"></div></div></div>
-    <div class="setting-row"><div><b>Экспорт сохранения</b><span>Скачать файл прогресса .json</span></div><button class="btn btn-ghost" style="width:auto;padding:9px 14px;" onclick="exportSave()">Экспорт</button></div>
-    <div class="setting-row"><div><b>Импорт сохранения</b><span>Загрузить файл прогресса</span></div><label class="btn btn-ghost" style="width:auto;padding:9px 14px;cursor:pointer;">Импорт<input type="file" accept="application/json" style="display:none" onchange="importSave(event)"></label></div>
-    <div class="setting-row"><div><b>Сброс прогресса</b><span>Удалить весь прогресс безвозвратно</span></div><button class="btn btn-select" style="width:auto;padding:9px 14px;background:var(--accent);" onclick="resetProgress()">Сброс</button></div>
-    <div style="width:100%;max-width:520px;text-align:center;color:var(--text-muted);font-size:11px;font-weight:700;margin-top:14px;">Автосохранение включено · последнее сохранение: <span id="last-saved-text">—</span></div>
+    <div class="setting-row"><div><b>Резервная копия</b><span>Сохранить копию игрового прогресса</span></div><button class="btn btn-ghost" style="width:auto;padding:9px 14px;" onclick="exportSave()">СОХРАНИТЬ</button></div>
+    <div class="setting-row"><div><b>Восстановление</b><span>Загрузить резервную копию прогресса</span></div><label class="btn btn-ghost" style="width:auto;padding:9px 14px;cursor:pointer;">ЗАГРУЗИТЬ<input type="file" accept="application/json" style="display:none" onchange="importSave(event)"></label></div>
+    <div class="setting-row"><div><b>Новая карьера</b><span>Начать путь заново с чистого гаража</span></div><button class="btn btn-select" style="width:auto;padding:9px 14px;background:var(--accent);" onclick="resetProgress()">НАЧАТЬ ЗАНОВО</button></div>
+    <div class="progress-save-note">Прогресс сохраняется автоматически · <span id="last-saved-text">—</span></div>
   </div>
 
 </main>
