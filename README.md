@@ -1,140 +1,133 @@
-# AutoSyndicate Carbon v10
+# AutoSyndicate Carbon v12
 
-AutoSyndicate Carbon переведён на стек **Next.js App Router + TypeScript + Supabase + Vercel**.
+AutoSyndicate Carbon v12 is a Telegram Mini App built for Vercel on Next.js App Router + TypeScript. v12 focuses on reliable server synchronization: Telegram identity, friends, clans, chat, market, cases, referrals, bank operations and legacy PvP now use the same Vercel/HttpOnly-session boundary instead of depending on a browser Supabase session.
 
-v10 — миграционный релиз: серверная архитектура и критичные online-системы уже разнесены по TypeScript-модулям, а существующий игровой UI подключён через `src/legacy/runtime.ts`, чтобы перенос не уничтожил рабочую гонку, кейсы, рынок и экраны v9. Compatibility-layer помечен `@ts-nocheck`; новый код работает в strict TypeScript.
+## v12 synchronization fixes
 
-## Стек
+- Server Telegram session is the authoritative online identity.
+- Browser Supabase Auth is optional and used only as a realtime accelerator where available.
+- A valid HttpOnly session survives Telegram WebView reloads.
+- Any Vercel API `401` triggers a one-shot Telegram re-auth and retries the original request automatically.
+- `requireSession()` verifies the signed cookie against both `player_profiles` and `telegram_principals`; stale bindings self-repair through re-auth instead of leaving the UI half-online.
+- Friends and clans no longer require a separate client Supabase session.
+- Chat reads/writes are routed through `/api/social/chat`; direct browser table writes are removed.
+- Market reads and mutations use `/api/market`; realtime is optional.
+- Case reconciliation uses `/api/cases/pending`.
+- Referral operations use `/api/referrals`.
+- Bank transfers and claims use `/api/bank`.
+- Legacy async PvP transitions use `/api/pvp`.
+- Background claims no longer stop when the optional browser Supabase client is unavailable.
+- Profile screen includes a server-sync indicator and a retry action.
+- `/api/sync/status` reports the deployed synchronization schema version.
+- Friends now receive server-enriched profile/presence data.
+- Chat messages are resolved to stable `player_id` values rather than identifying the sender by display name.
+- Server calls have a client-side timeout so a broken connection does not leave the Telegram UI loading forever.
 
-- Next.js 16 / App Router
-- React 19
-- TypeScript strict
-- Supabase Auth + Postgres + RLS/RPC
-- Telegram Mini App `initData` authentication
+## v11 systems retained
+
+- Redesigned Street Network duel list.
+- 40 server-managed AI opponents.
+- Server-managed car catalog.
+- `/admin` Control Center with statistics, moderation, balance/car/content controls and audit log.
+- Telegram Bot API webhook with secret-token verification and update idempotency.
+- `/start`, `/help`, protected `/admin`, and DB-configurable custom commands.
+- Chat reply duel flow with Accept/Decline inline buttons.
+- Private two-player Mini App duel rooms with membership checks, vehicle selection, ready-check and synchronized `start_at`.
+
+## Stack
+
+- Next.js 16.3.1 App Router
+- TypeScript strict mode
+- React 19.2.8
+- Supabase Auth + PostgreSQL/RLS/RPC
+- Telegram Mini Apps + Telegram Bot API webhooks
 - Vercel Node.js Functions
-- Zod request/environment validation
 
-## Структура
+## Database migrations
 
-```text
-src/
-  app/
-    api/                 # HTTP boundary: auth, race, cases, market, profile, social
-  components/            # React entry components
-  features/
-    auth/                 # stable Telegram -> Supabase principal
-    race/                 # typed physics + server race validation
-    cases/                # case roll/claim boundary
-    economy/              # economy types
-    market/               # market server access
-    profile/              # safe profile updates
-    social/               # friends
-    clans/                # clans
-    ui/                   # loading/runtime UI helpers
-  lib/
-    security/             # HttpOnly session, origin checks, rate limits
-    supabase/             # browser/server clients
-    telegram/             # Telegram initData HMAC verification
-  legacy/                 # temporary v9 UI compatibility layer
-supabase/
-  schema_v8.sql
-  schema_v9.sql
-  schema_v10.sql          # v10 server bridge + hardening
+For a fresh database apply in this order:
+
+1. `supabase/schema_v8.sql`
+2. `supabase/schema_v9.sql`
+3. `supabase/schema_v10.sql`
+4. `supabase/schema_v11.sql`
+5. `supabase/schema_v12.sql`
+
+If v11 is already deployed, run only `supabase/schema_v12.sql`.
+
+**v12 SQL is required for the new server chat/bank/PvP/referral bridges.** If the code is deployed without the migration, `/api/sync/status` reports an old schema and the profile synchronization card will tell you that v12 migration is required.
+
+See `MIGRATION_V12.md`.
+
+## Environment
+
+Public values may be present in `.env`:
+
+```dotenv
+NEXT_PUBLIC_APP_NAME=AutoSyndicate Carbon
+NEXT_PUBLIC_APP_URL=https://your-domain.vercel.app
+NEXT_PUBLIC_SUPABASE_URL=https://PROJECT.supabase.co
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=YOUR_PUBLISHABLE_KEY
 ```
 
-## Локальный запуск
+Server secrets belong in Vercel Environment Variables and in local `.env.local` only:
 
-1. Установить Node.js 20.9+.
-2. Установить зависимости:
-
-```bash
-npm install
+```dotenv
+SUPABASE_SERVICE_ROLE_KEY=YOUR_SERVICE_ROLE_KEY
+TELEGRAM_BOT_TOKEN=123456:BOT_TOKEN
+TELEGRAM_BOT_USERNAME=YourBotUsername
+TELEGRAM_WEBHOOK_SECRET=generate_a_long_random_secret
+SESSION_SECRET=generate_at_least_32_random_characters
+ADMIN_TELEGRAM_IDS=123456789,987654321
+TELEGRAM_AUTH_MAX_AGE_SECONDS=3600
 ```
 
-3. Создать локальный файл секретов:
+Never put a bot token, service-role key or session secret into `NEXT_PUBLIC_*`.
+
+## Local setup
 
 ```bash
 cp .env.local.example .env.local
-```
-
-4. Заполнить `.env.local` реальными значениями.
-5. Проверить окружение:
-
-```bash
+npm install
 npm run check:env
-```
-
-6. Если v8/v9 ещё не применялись, выполнить их по порядку в Supabase SQL Editor. Затем выполнить:
-
-```text
-supabase/schema_v10.sql
-```
-
-7. Запустить:
-
-```bash
+npm run typecheck
+npm run build
 npm run dev
 ```
 
-## Vercel
+`npm run check:env` expects the required variables to be present in the process environment. On Vercel, configure them in Project → Settings → Environment Variables.
 
-В Vercel Project Settings -> Environment Variables задать для Production/Preview/Development:
+## Vercel deployment
+
+1. Apply all required SQL migrations.
+2. Configure Production/Preview/Development environment variables in Vercel.
+3. Deploy the Next.js project.
+4. Open the Mini App from the configured Telegram bot and verify the profile card shows `СЕРВЕР ПОДКЛЮЧЕН`.
+5. Open Friends, Clans and Chat. They should work even if the optional browser Supabase realtime session cannot be created.
+6. Configure the Telegram webhook from the protected admin flow. See `BOT_SETUP.md`.
+
+## Server synchronization model
 
 ```text
-NEXT_PUBLIC_APP_NAME
-NEXT_PUBLIC_APP_URL
-NEXT_PUBLIC_SUPABASE_URL
-NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
-SUPABASE_SERVICE_ROLE_KEY
-TELEGRAM_BOT_TOKEN
-SESSION_SECRET
-TELEGRAM_AUTH_MAX_AGE_SECONDS
+Telegram WebApp initData
+        ↓ HMAC verification on Vercel
+stable tg_<telegram_id> player
+        ↓
+telegram_principals + player_profiles
+        ↓
+signed HttpOnly session cookie
+        ↓
+Next.js /api/* routes
+        ↓
+service-role queries / server-only RPC bridges
+        ↓
+Supabase PostgreSQL
 ```
 
-`SUPABASE_SERVICE_ROLE_KEY`, `TELEGRAM_BOT_TOKEN` и `SESSION_SECRET` должны быть **server-only**. Никогда не добавлять им префикс `NEXT_PUBLIC_`.
+The browser never chooses another player's server identity. Sensitive API routes derive `playerId` from the verified session cookie.
 
-Через Vercel CLI можно использовать:
+Browser Supabase Auth may still be created to accelerate realtime UI. Its failure does not invalidate the server session and does not disable Friends, Clans, Chat, Market, Cases, Referrals or Bank APIs.
 
-```bash
-vercel link
-vercel env add SUPABASE_SERVICE_ROLE_KEY --sensitive
-vercel env add TELEGRAM_BOT_TOKEN --sensitive
-vercel env add SESSION_SECRET --sensitive
-vercel env pull .env.local --yes
-```
+## Important remaining security debt
 
-Перед deploy:
-
-```bash
-npm run check:env
-npm run typecheck
-npm run lint
-npm run build
-```
-
-Deploy:
-
-```bash
-vercel --prod
-```
-
-## Telegram Bot
-
-Production-запуск ожидает настоящий `Telegram.WebApp.initData`. Vercel API проверяет подпись initData через `TELEGRAM_BOT_TOKEN`; простой `playerId` из браузера больше не считается доказательством личности.
-
-В BotFather/Web App настройках укажи production URL Vercel/собственного домена.
-
-## Supabase Auth
-
-Для v10 рекомендуется отключить Anonymous Sign-Ins. Сервер после Telegram-проверки создаёт/находит стабильный Supabase principal и выдаёт одноразовый token hash для `verifyOtp`, чтобы существующие RLS-политики работали с постоянным `auth.uid()` на разных устройствах.
-
-Email provider должен оставаться доступным для server-side `generateLink`; реальная отправка письма пользователю не используется.
-
-## ENV
-
-- `.env` содержит только публичную конфигурацию и может храниться в Git.
-- `.env.local` содержит секреты и находится в `.gitignore`.
-- `.env.example` — полный шаблон без секретов.
-- На Vercel реальные секреты хранятся в Environment Variables, а не в репозитории.
-
-Подробнее: `ARCHITECTURE.md`, `SECURITY.md`, `MIGRATION_V10.md`.
+The v12 synchronization layer is substantially safer, but the old compatibility runtime still keeps parts of the SYND wallet/inventory/game progression in `localStorage`. Do not treat the current economy as tamper-proof for valuable competitive rewards. The next architectural step is a server-authoritative wallet/inventory/vehicle ledger and server-calculated rewards. See `SECURITY.md`.
