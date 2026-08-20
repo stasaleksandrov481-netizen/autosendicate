@@ -4,7 +4,7 @@ export const GAME_SHELL = `
   <div class="pl-grid"></div>
   <div class="pl-scan"></div>
   <div class="pl-logo">AUTO<span>SYNDICATE</span></div>
-  <div class="pl-stage" id="pl-stage">CARBON DISTRICT</div>
+  <div class="pl-stage" id="pl-stage">КАРБОНОВЫЙ РАЙОН</div>
   <div class="pl-bar-bg"><div class="pl-bar-fill" id="pl-bar"></div></div>
   <div class="pl-row"><span class="pl-sub" id="pl-sub">Подготовка улиц</span><b id="pl-percent">0%</b></div>
   <div class="pl-tip" id="pl-tip">Идеальный SHIFT сохраняет больше оборотов после переключения.</div>
@@ -14,7 +14,7 @@ export const GAME_SHELL = `
 <header>
   <div class="header-left">
     <div class="avatar-mini" id="header-avatar" onclick="switchTab('profile')">Г</div>
-    <div class="brand-lockup" onclick="tapLogo()"><div class="logo">Auto<span>Syndicate</span></div><div class="brand-sub">CARBON DISTRICT</div></div>
+    <div class="brand-lockup" onclick="tapLogo()"><div class="logo">Auto<span>Syndicate</span></div><div class="brand-sub">КАРБОНОВЫЙ РАЙОН</div></div>
   </div>
   <div class="header-stats">
     <div class="rep-badge">LVL <span id="lvl-display">1</span></div>
@@ -55,8 +55,8 @@ export const GAME_SHELL = `
   <!-- ДУЭЛЬ: выбор соперника -->
   <div id="screen-duel-select" class="screen duel-screen-v11">
     <div class="duel-v11-heading">
-      <div><span>CARBON LEAGUE</span><h2>Дуэльная сетка</h2><p>Подбери соперника под свою сборку и забери его позицию в уличной иерархии.</p></div>
-      <div class="duel-v11-live"><i></i><b>LIVE</b><span id="duel-online-label">поиск соперников</span></div>
+      <div><span>КАРБОНОВАЯ ЛИГА</span><h2>Дуэльная сетка</h2><p>Подбери соперника под свою сборку и забери его позицию в уличной иерархии.</p></div>
+      <div class="duel-v11-live"><i></i><b>В СЕТИ</b><span id="duel-online-label">поиск соперников</span></div>
     </div>
     <div class="subtabs duel-v11-tabs">
       <div class="subtab-btn active" id="dsub-normal" onclick="switchDuelSub('normal')">Сетка</div>
@@ -74,7 +74,7 @@ export const GAME_SHELL = `
     <div class="list-container" id="pvp-wrap" style="display:none;">
       <div class="sell-picker">
         <div class="gauge-label" style="text-align:left;margin-bottom:6px;">Создать вызов</div>
-        <div class="pre-race-line"><span>Твоя мощность (текущая тачка)</span><b id="pvp-my-power">—</b></div>
+        <div class="pre-race-line"><span>Твоя мощность (текущая тачка)</span><b id="pvp-my-power">0 л.с.</b></div>
         <div class="btn-row" style="width:100%;gap:8px;margin-top:8px;">
           <input class="chat-input" id="pvp-stake-input" type="number" placeholder="Ставка, " style="border-radius:10px;">
           <button class="sell-btn market" style="white-space:nowrap;" onclick="postPvpChallenge()">Бросить вызов</button>
@@ -119,13 +119,14 @@ export const GAME_SHELL = `
   </div>
 
   <!-- КАЗИНО ХАБ -->
-  <div id="screen-casino" class="screen">
-    <div class="section-title"><span>Подпольное казино</span></div>
+  <div id="screen-casino" class="screen casino-screen-premium">
+    <div class="casino-hero-premium"><div><span>ЗАКРЫТЫЙ КЛУБ</span><h2>Казино синдиката</h2><p>Четыре игры. Один баланс. Ставки фиксируются до результата.</p></div><div class="casino-live-dot"><i></i>ОТКРЫТО</div></div>
+    <div class="casino-session-stats" id="casino-session-stats"></div>
     <div class="list-container" id="casino-hub-list"></div>
   </div>
 
   <!-- BLACKJACK -->
-  <div id="screen-blackjack" class="screen">
+  <div id="screen-blackjack" class="screen casino-game-screen">
     <div class="back-link" onclick="switchTab('casino')">← Казино</div>
     <div class="section-title"><span>Блэкджек 21</span></div>
     <div class="game-table">
@@ -140,7 +141,7 @@ export const GAME_SHELL = `
         <button class="chip-btn" onclick="bjAdjustBet(-50)">-50</button>
         <input class="bet-input" id="bj-bet-input" type="number" value="100">
         <button class="chip-btn" onclick="bjAdjustBet(50)">+50</button>
-        <button class="chip-btn" onclick="bjMaxBet()">MAX</button>
+        <button class="chip-btn" onclick="bjMaxBet()">МАКС</button>
       </div>
       <button class="btn btn-select" style="margin-top:10px;" onclick="bjDeal()">РАЗДАТЬ</button>
     </div>
@@ -148,7 +149,7 @@ export const GAME_SHELL = `
   </div>
 
   <!-- ROULETTE -->
-  <div id="screen-roulette" class="screen">
+  <div id="screen-roulette" class="screen casino-game-screen">
     <div class="back-link" onclick="switchTab('casino')">← Казино</div>
     <div class="section-title"><span>Рулетка</span></div>
     <div class="rlt-result-num" id="rlt-result" style="background:#1a1a24;">?</div>
@@ -159,14 +160,14 @@ export const GAME_SHELL = `
         <button class="chip-btn" onclick="rltAdjustBet(-50)">-50</button>
         <input class="bet-input" id="rlt-bet-input" type="number" value="100">
         <button class="chip-btn" onclick="rltAdjustBet(50)">+50</button>
-        <button class="chip-btn" onclick="rltMaxBet()">MAX</button>
+        <button class="chip-btn" onclick="rltMaxBet()">МАКС</button>
       </div>
       <button class="btn btn-select" style="margin-top:10px;" onclick="rltSpin()">КРУТИТЬ</button>
     </div>
   </div>
 
   <!-- SLOTS -->
-  <div id="screen-slots" class="screen">
+  <div id="screen-slots" class="screen casino-game-screen">
     <div class="back-link" onclick="switchTab('casino')">← Казино</div>
     <div class="section-title"><span>Слоты «777»</span></div>
     <div class="game-table">
@@ -182,18 +183,18 @@ export const GAME_SHELL = `
         <button class="chip-btn" onclick="slotsAdjustBet(-25)">-25</button>
         <input class="bet-input" id="slots-bet-input" type="number" value="50">
         <button class="chip-btn" onclick="slotsAdjustBet(25)">+25</button>
-        <button class="chip-btn" onclick="slotsMaxBet()">MAX</button>
+        <button class="chip-btn" onclick="slotsMaxBet()">МАКС</button>
       </div>
       <button class="btn btn-select" style="margin-top:10px;" onclick="slotsSpin()">КРУТИТЬ</button>
     </div>
   </div>
 
   <!-- DICE -->
-  <div id="screen-dice" class="screen">
+  <div id="screen-dice" class="screen casino-game-screen">
     <div class="back-link" onclick="switchTab('casino')">← Казино</div>
     <div class="section-title"><span>Кости</span></div>
     <div class="game-table">
-      <div class="dice-result-num" id="dice-result" style="color:var(--text-muted);">—</div>
+      <div class="dice-result-num" id="dice-result" style="color:var(--text-muted);">0</div>
       <div class="dice-readout"><span>Шанс: <b id="dice-chance">49%</b></span><span>Выплата: <b id="dice-mult">x2.00</b></span></div>
       <input class="dice-slider" type="range" id="dice-slider" min="2" max="98" value="50" oninput="diceUpdate()">
       <div class="dice-readout"><span>Бросить меньше</span><span id="dice-target">50</span></div>
@@ -203,7 +204,7 @@ export const GAME_SHELL = `
         <button class="chip-btn" onclick="diceAdjustBet(-50)">-50</button>
         <input class="bet-input" id="dice-bet-input" type="number" value="100">
         <button class="chip-btn" onclick="diceAdjustBet(50)">+50</button>
-        <button class="chip-btn" onclick="diceMaxBet()">MAX</button>
+        <button class="chip-btn" onclick="diceMaxBet()">МАКС</button>
       </div>
       <button class="btn btn-select" style="margin-top:10px;" onclick="diceRoll()">БРОСИТЬ</button>
     </div>
@@ -212,9 +213,9 @@ export const GAME_SHELL = `
   <!-- ПРОФИЛЬ -->
   <div id="screen-profile" class="screen">
     <div class="profile-hero">
-      <div class="profile-avatar-block"><div class="avatar-circle" id="avatar-letter">Г</div><span>DRIVER</span></div>
+      <div class="profile-avatar-block"><div class="avatar-circle" id="avatar-letter">Г</div><span>ГОНЩИК</span></div>
       <div class="profile-identity">
-        <div class="profile-kicker">CARBON DISTRICT</div>
+        <div class="profile-kicker">КАРБОНОВЫЙ РАЙОН</div>
         <div class="profile-name" id="profile-name">Гонщик</div>
         <div class="profile-rep">Уличный рейтинг · LVL <span id="profile-lvl">1</span></div>
       </div>
@@ -288,7 +289,7 @@ export const GAME_SHELL = `
   <div id="screen-leaderboard" class="screen">
     <div class="back-link" onclick="switchTab('profile')">← Профиль</div>
     <div class="section-title"><span>Игроки синдиката</span></div>
-    <div class="player-lb-head">Глобальная таблица сезона · лучшие пилоты Carbon District</div>
+    <div class="player-lb-head">Глобальная таблица сезона · лучшие пилоты Карбонового района</div>
     <div class="list-container" id="lb-list"></div>
   </div>
 

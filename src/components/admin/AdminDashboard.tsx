@@ -121,7 +121,7 @@ interface CommandForm {
 }
 
 const initialCar: CarForm = { id: 28, name: '', imagePath: '', price: 10000, power: 500, tier: 'Sport Tier 4', category: 'sport', flavor: '', active: true, sortOrder: 100 };
-const initialOpponent: OpponentForm = { key: 'npc_new', name: '', power: 500, reward: 900, unlockLevel: 2, carName: 'Street build', rating: 75, style: 'Агрессивный', favoriteTracks: 'Промзона, Тоннель', wins: 40, losses: 20, avatar: 'NP', taunt: '', preLines: 'Готов?', winLine: 'Ещё увидимся.', loseLine: 'Хороший заезд.', boss: false, active: true, sortOrder: 100 };
+const initialOpponent: OpponentForm = { key: 'npc_new', name: '', power: 500, reward: 900, unlockLevel: 2, carName: 'Уличная сборка', rating: 75, style: 'Агрессивный', favoriteTracks: 'Промзона, Тоннель', wins: 40, losses: 20, avatar: 'NP', taunt: '', preLines: 'Готов?', winLine: 'Ещё увидимся.', loseLine: 'Хороший заезд.', boss: false, active: true, sortOrder: 100 };
 const initialCommand: CommandForm = { command: 'help', responseText: 'Команды AutoSyndicate', enabled: true, parseMode: 'HTML', buttonLabel: '', buttonUrl: '' };
 
 async function request<T extends JsonRecord>(url: string, options?: RequestInit): Promise<T> {
@@ -215,7 +215,7 @@ export function AdminDashboard() {
               ['Игроки', stats.players], ['Онлайн ~15м', stats.activePlayers15m], ['Активные дуэли', stats.activeDuels], ['Всего гонок', stats.races],
               ['Кланы', stats.clans], ['Активные лоты', stats.activeListings], ['Открытия кейсов', stats.caseRolls], ['Забанено', stats.bannedPlayers],
               ['SYND в обороте', stats.totalBalance], ['Всего заработано', stats.totalEarned], ['Средний баланс', stats.averageBalance], ['Средний рейтинг', stats.averageRating],
-              ['Win rate', `${stats.globalWinRate}%`], ['Sync schema', `v${stats.serverSchemaVersion || '—'}`], ['Telegram principals', `${stats.telegramPrincipals}/${stats.telegramProfiles}`], ['Principal coverage', `${stats.principalCoverage}%`]
+              ['Процент побед', `${stats.globalWinRate}%`], ['Версия схемы', `v${stats.serverSchemaVersion || 0}`], ['Telegram-профили', `${stats.telegramPrincipals}/${stats.telegramProfiles}`], ['Связано профилей', `${stats.principalCoverage}%`]
             ].map(([label, value]) => <div className="admin-stat" key={String(label)}><span>{label}</span><b>{typeof value === 'number' ? formatNumber(value) : String(value)}</b></div>)}
           </div>
           <div className="admin-kpi-row admin-kpi-wide">
@@ -270,7 +270,7 @@ export function AdminDashboard() {
               <div className="admin-form-row"><label><span>Sort order</span><input type="number" value={carForm.sortOrder} onChange={(event) => setCarForm({ ...carForm, sortOrder: Number(event.target.value) })} /></label><label className="admin-check"><span>Active</span><input type="checkbox" checked={carForm.active} onChange={(event) => setCarForm({ ...carForm, active: event.target.checked })} /></label></div>
               <button className="admin-primary">Сохранить машину</button>
             </form>
-            <div className="admin-list">{cars.map((car) => <button key={car.id} className={!car.active ? 'muted' : ''} onClick={() => setCarForm({ id: car.id, name: car.name, imagePath: car.image_path || '', price: car.price, power: car.power, tier: car.tier, category: car.category, flavor: car.flavor || '', active: car.active, sortOrder: car.sort_order })}><b>#{car.id} · {car.name}</b><span>{car.power} л.с. · {car.tier} · {formatNumber(car.price)} SYND · {car.active ? 'ACTIVE' : 'OFF'}</span></button>)}</div>
+            <div className="admin-list">{cars.map((car) => <button key={car.id} className={!car.active ? 'muted' : ''} onClick={() => setCarForm({ id: car.id, name: car.name, imagePath: car.image_path || '', price: car.price, power: car.power, tier: car.tier, category: car.category, flavor: car.flavor || '', active: car.active, sortOrder: car.sort_order })}><b>#{car.id} · {car.name}</b><span>{car.power} л.с. · {car.tier} · {formatNumber(car.price)} SYND · {car.active ? 'ВКЛ' : 'ВЫКЛ'}</span></button>)}</div>
           </div>
         </>}
 
@@ -294,7 +294,7 @@ export function AdminDashboard() {
               <div className="admin-form-row"><label><span>Sort</span><input type="number" value={opponentForm.sortOrder} onChange={(event) => setOpponentForm({ ...opponentForm, sortOrder: Number(event.target.value) })} /></label><label className="admin-check"><span>Boss</span><input type="checkbox" checked={opponentForm.boss} onChange={(event) => setOpponentForm({ ...opponentForm, boss: event.target.checked })} /></label><label className="admin-check"><span>Active</span><input type="checkbox" checked={opponentForm.active} onChange={(event) => setOpponentForm({ ...opponentForm, active: event.target.checked })} /></label></div>
               <button className="admin-primary">Сохранить соперника</button>
             </form>
-            <div className="admin-list">{opponents.map((opponent) => <button key={opponent.key} className={!opponent.active ? 'muted' : ''} onClick={() => setOpponentForm({ key: opponent.key, name: opponent.name, power: opponent.power, reward: opponent.reward, unlockLevel: opponent.unlock_level, carName: opponent.car_name, rating: opponent.rating, style: opponent.style, favoriteTracks: (opponent.favorite_tracks || []).join(', '), wins: opponent.wins, losses: opponent.losses, avatar: opponent.avatar, taunt: opponent.taunt || '', preLines: (opponent.pre_lines || []).join('\n'), winLine: opponent.win_line || '', loseLine: opponent.lose_line || '', boss: opponent.boss, active: opponent.active, sortOrder: opponent.sort_order })}><b>{opponent.boss ? 'BOSS · ' : ''}{opponent.name}</b><span>{opponent.car_name} · {opponent.power} л.с. · RATING {opponent.rating} · {opponent.active ? 'ACTIVE' : 'OFF'}</span></button>)}</div>
+            <div className="admin-list">{opponents.map((opponent) => <button key={opponent.key} className={!opponent.active ? 'muted' : ''} onClick={() => setOpponentForm({ key: opponent.key, name: opponent.name, power: opponent.power, reward: opponent.reward, unlockLevel: opponent.unlock_level, carName: opponent.car_name, rating: opponent.rating, style: opponent.style, favoriteTracks: (opponent.favorite_tracks || []).join(', '), wins: opponent.wins, losses: opponent.losses, avatar: opponent.avatar, taunt: opponent.taunt || '', preLines: (opponent.pre_lines || []).join('\n'), winLine: opponent.win_line || '', loseLine: opponent.lose_line || '', boss: opponent.boss, active: opponent.active, sortOrder: opponent.sort_order })}><b>{opponent.boss ? 'БОСС · ' : ''}{opponent.name}</b><span>{opponent.car_name} · {opponent.power} л.с. · РЕЙТИНГ {opponent.rating} · {opponent.active ? 'ВКЛ' : 'ВЫКЛ'}</span></button>)}</div>
           </div>
         </>}
 
@@ -312,7 +312,7 @@ export function AdminDashboard() {
               <div className="admin-hint">Шаблоны: {'{first_name}'} · {'{username}'} · {'{app_url}'} · {'{args}'} · {'{user_id}'} · {'{chat_id}'}</div>
               <button className="admin-primary">Сохранить команду</button>
             </form>
-            <div className="admin-list">{commands.map((command) => <div className="admin-command" key={command.command}><button onClick={() => setCommandForm({ command: command.command, responseText: command.response_text, enabled: command.enabled, parseMode: command.parse_mode, buttonLabel: command.button_label || '', buttonUrl: command.button_url || '' })}><b>/{command.command}</b><span>{command.enabled ? 'ACTIVE' : 'OFF'} · {command.parse_mode} · {command.response_text.slice(0, 90)}</span></button>{command.command !== 'start' && <button className="danger" onClick={() => void request('/api/admin/bot/commands', { method: 'DELETE', body: JSON.stringify({ command: command.command }) }).then(loadAll).catch((error: Error) => setNotice(error.message))}>Удалить</button>}</div>)}</div>
+            <div className="admin-list">{commands.map((command) => <div className="admin-command" key={command.command}><button onClick={() => setCommandForm({ command: command.command, responseText: command.response_text, enabled: command.enabled, parseMode: command.parse_mode, buttonLabel: command.button_label || '', buttonUrl: command.button_url || '' })}><b>/{command.command}</b><span>{command.enabled ? 'ВКЛ' : 'ВЫКЛ'} · {command.parse_mode} · {command.response_text.slice(0, 90)}</span></button>{command.command !== 'start' && <button className="danger" onClick={() => void request('/api/admin/bot/commands', { method: 'DELETE', body: JSON.stringify({ command: command.command }) }).then(loadAll).catch((error: Error) => setNotice(error.message))}>Удалить</button>}</div>)}</div>
           </div>
         </>}
 

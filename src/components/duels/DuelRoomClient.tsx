@@ -143,9 +143,9 @@ export function DuelRoomClient({ code, onClose }: { code: string; onClose: () =>
 
       {data && <>
         <div className="duel-versus">
-          <div className="duel-person"><span>ВЫ</span><b>{me?.name || 'Гонщик'}</b><small>RATING {me?.rating ?? 0}</small></div>
+          <div className="duel-person"><span>ВЫ</span><b>{me?.name || 'Гонщик'}</b><small>РЕЙТИНГ {me?.rating ?? 0}</small></div>
           <div className="duel-vs-mark">VS</div>
-          <div className="duel-person right"><span>СОПЕРНИК</span><b>{other?.name || 'Гонщик'}</b><small>RATING {other?.rating ?? 0}</small></div>
+          <div className="duel-person right"><span>СОПЕРНИК</span><b>{other?.name || 'Гонщик'}</b><small>РЕЙТИНГ {other?.rating ?? 0}</small></div>
         </div>
 
         {!finished && <div className="duel-room-grid">
@@ -181,7 +181,7 @@ export function DuelRoomClient({ code, onClose }: { code: string; onClose: () =>
 
         {finished && <div className={`duel-finish-card ${winnerLabel === 'ПОБЕДА' ? 'win' : winnerLabel === 'ПОРАЖЕНИЕ' ? 'loss' : ''}`}>
           <span>DUEL COMPLETE</span><b>{winnerLabel}</b>
-          <div className="duel-result-grid"><div><small>Вы</small><strong>{myResult ? `${(myResult.elapsedMs/1000).toFixed(3)} c` : 'DNF'}</strong><em>{myResult ? `${Math.round(myResult.topSpeedKmh)} км/ч` : '—'}</em></div><div><small>Соперник</small><strong>{otherResult ? `${(otherResult.elapsedMs/1000).toFixed(3)} c` : 'DNF'}</strong><em>{otherResult ? `${Math.round(otherResult.topSpeedKmh)} км/ч` : '—'}</em></div></div>
+          <div className="duel-result-grid"><div><small>Вы</small><strong>{myResult ? `${(myResult.elapsedMs/1000).toFixed(3)} c` : 'НЕ ФИНИШИРОВАЛ'}</strong><em>{myResult ? `${Math.round(myResult.topSpeedKmh)} км/ч` : '0'}</em></div><div><small>Соперник</small><strong>{otherResult ? `${(otherResult.elapsedMs/1000).toFixed(3)} c` : 'НЕ ФИНИШИРОВАЛ'}</strong><em>{otherResult ? `${Math.round(otherResult.topSpeedKmh)} км/ч` : '0'}</em></div></div>
           <button onClick={onClose}>Вернуться в игру</button>
         </div>}
       </>}

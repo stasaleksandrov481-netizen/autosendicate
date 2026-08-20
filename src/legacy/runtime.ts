@@ -412,11 +412,34 @@ function addXP(n){
 
 /* ==================== UTIL ==================== */
 function fmt(n){ return Math.round(n).toLocaleString('ru-RU'); }
+let toastTimer:any=null;
+let lastToastText='';
+let lastToastAt=0;
 function showToast(msg){
-  const t=document.createElement('div');
-  t.className='toast'; t.innerText=msg;
-  document.body.appendChild(t);
-  setTimeout(()=>t.remove(),2600);
+  const text=String(msg??'').trim();
+  if(!text)return;
+  const now=Date.now();
+  let t=document.getElementById('autosyndicate-toast');
+  if(!t){
+    t=document.createElement('div');
+    t.id='autosyndicate-toast';
+    t.className='toast toast-compact';
+    t.setAttribute('role','status');
+    t.setAttribute('aria-live','polite');
+    document.body.appendChild(t);
+  }
+  if(text===lastToastText&&now-lastToastAt<1200){
+    if(toastTimer)clearTimeout(toastTimer);
+  }
+  lastToastText=text;lastToastAt=now;
+  t.textContent=text;
+  t.classList.remove('hide');
+  t.classList.add('show');
+  if(toastTimer)clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>{
+    t?.classList.remove('show');
+    t?.classList.add('hide');
+  },2200);
 }
 function flashResult(el, win){
   if(!state.settings.animations || !el) return;
@@ -474,7 +497,7 @@ function switchDuelSub(sub){
   document.getElementById('pvp-wrap').style.display = sub==='pvp' ? '' : 'none';
   if(sub==='pvp'){
     const car=carsDB.find(c=>c.id===state.activeCarId);
-    document.getElementById('pvp-my-power').innerText = car ? getEffectivePower(car)+' л.с.' : '—';
+    document.getElementById('pvp-my-power').innerText = car ? getEffectivePower(car)+' л.с.' : '0 л.с.';
     openPvp();
   } else {
     renderOpponents();
@@ -708,13 +731,17 @@ setInterval(()=>{
 function renderCasinoHub(){
   updateHeader();
   const c = document.getElementById('casino-hub-list');
+  const stats=document.getElementById('casino-session-stats');
+  const wagered=Number(state.stats.casinoWagered)||0,won=Number(state.stats.casinoWon)||0;
+  if(stats) stats.innerHTML='<div><span>Поставлено</span><b>'+fmt(wagered)+' SYND</b></div><div><span>Выиграно</span><b>'+fmt(won)+' SYND</b></div><div><span>Результат</span><b class="'+(won-wagered>=0?'positive':'')+'">'+(won-wagered>=0?'+':'')+fmt(won-wagered)+' SYND</b></div>';
+  if(!c)return;
   c.innerHTML =
-    '<div class="casino-card" onclick="switchTab(\'blackjack\')"><div class="casino-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="4" width="12" height="17" rx="2"/><rect x="10" y="2" width="12" height="17" rx="2" fill="#191922"/></svg></div><div class="casino-info"><b>Блэкджек 21</b><span>Обыграй дилера, набери 21</span></div></div>'+
-    '<div class="casino-card" onclick="switchTab(\'roulette\')"><div class="casino-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.2" fill="currentColor" stroke="none"/><path d="M12 3v4M12 17v4M3 12h4M17 12h4"/></svg></div><div class="casino-info"><b>Рулетка</b><span>Красное, чёрное или число</span></div></div>'+
-    '<div class="casino-card" onclick="switchTab(\'slots\')"><div class="casino-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 4v5M16 4v5"/></svg></div><div class="casino-info"><b>Слоты «777»</b><span>Крути барабаны на джекпот</span></div></div>'+
-    '<div class="casino-card" onclick="switchTab(\'dice\')"><div class="casino-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8" cy="8" r="1.3" fill="currentColor" stroke="none"/><circle cx="16" cy="16" r="1.3" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.3" fill="currentColor" stroke="none"/></svg></div><div class="casino-info"><b>Кости</b><span>Загадай шанс — забери выплату</span></div></div>'+
-    '<div style="width:100%;max-width:520px;text-align:center;color:var(--text-muted);font-size:11px;font-weight:700;margin-top:6px;">Всего поставлено: '+fmt(state.stats.casinoWagered)+'  · Выиграно: '+fmt(state.stats.casinoWon)+' </div>';
+    '<button class="casino-card casino-card-premium" onclick="switchTab(\'blackjack\')"><div class="casino-card-index">01</div><div class="casino-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="4" width="12" height="17" rx="2"/><rect x="10" y="2" width="12" height="17" rx="2"/></svg></div><div class="casino-info"><b>Блэкджек 21</b><span>Классический стол · дилер останавливается на 17</span></div><div class="casino-card-arrow">›</div></button>'+
+    '<button class="casino-card casino-card-premium" onclick="switchTab(\'roulette\')"><div class="casino-card-index">02</div><div class="casino-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.2"/><path d="M12 3v4M12 17v4M3 12h4M17 12h4"/></svg></div><div class="casino-info"><b>Рулетка</b><span>Числа, цвет и чётность · быстрые ставки</span></div><div class="casino-card-arrow">›</div></button>'+
+    '<button class="casino-card casino-card-premium featured" onclick="switchTab(\'slots\')"><div class="casino-card-index">03</div><div class="casino-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 4v5M16 4v5"/></svg></div><div class="casino-info"><b>Слоты «777»</b><span>Три барабана · главный выигрыш ×50</span></div><div class="casino-card-arrow">›</div></button>'+
+    '<button class="casino-card casino-card-premium" onclick="switchTab(\'dice\')"><div class="casino-card-index">04</div><div class="casino-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8" cy="8" r="1.3"/><circle cx="16" cy="16" r="1.3"/><circle cx="12" cy="12" r="1.3"/></svg></div><div class="casino-info"><b>Кости</b><span>Настрой вероятность и коэффициент выплаты</span></div><div class="casino-card-arrow">›</div></button>';
 }
+
 function clampBet(input, min){
   let v = parseInt(input.value)||0;
   if(v<min) v=min;
@@ -1124,7 +1151,7 @@ function setGarageSort(v){garageSort=['name','power','condition'].includes(v)?v:
 function quickRefuelActive(){const car=carsDB.find(c=>c.id===state.activeCarId);if(car)refuelCar(car.id);}
 function quickRepairActive(){const car=carsDB.find(c=>c.id===state.activeCarId);if(car)repairCar(car.id);}
 function renderShopToolbar(){
-  const tb=document.getElementById('shop-toolbar');if(!tb)return;const cats=[['all','ВСЕ'],['street','STREET'],['jdm','JDM'],['muscle','MUSCLE'],['sport','SPORT'],['super','SUPER'],['hyper','HYPER'],['legend','BOSS']];
+  const tb=document.getElementById('shop-toolbar');if(!tb)return;const cats=[['all','ВСЕ'],['street','STREET'],['jdm','JDM'],['muscle','MUSCLE'],['sport','SPORT'],['super','SUPER'],['hyper','HYPER'],['legend','БОСС']];
   tb.innerHTML=cats.map(([k,n])=>'<button class="carbon-chip '+(shopCategory===k?'active':'')+'" onclick="setShopCategory(\''+k+'\')">'+n+'</button>').join('')+'<button class="carbon-chip '+(shopSort==='power'?'active':'')+'" onclick="toggleShopSort()">'+(shopSort==='power'?'↓ МОЩНОСТЬ':'↑ ЦЕНА')+'</button>';
 }
 function setShopCategory(v){shopCategory=v;renderShop();}function toggleShopSort(){shopSort=shopSort==='price'?'power':'price';renderShop();}
@@ -1241,7 +1268,7 @@ function openPublicProfile(name,val,wins,races,cars,profile){
   const level=profile ? Number(profile.level)||1 : 1;
   root.innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closePublicProfile()"><div class="public-profile">'+
     '<div class="pp-head"><div class="public-avatar">'+escapeHtml((name||'Г').charAt(0).toUpperCase())+'</div><div><div style="font-size:18px;font-weight:1000;">'+escapeHtml(name)+'</div><div style="color:var(--text-muted);font-size:10px;font-weight:900;">УРОВЕНЬ '+level+' · УЧАСТНИК СИНДИКАТА</div></div></div>'+
-    '<div class="pp-grid"><div class="pp-stat"><span>Баланс</span><b>'+fmt(balance)+' SYND</b></div><div class="pp-stat"><span>Заработано</span><b>'+fmt(val)+' SYND</b></div><div class="pp-stat"><span>Победы</span><b>'+wins+'</b></div><div class="pp-stat"><span>Заезды</span><b>'+races+'</b></div><div class="pp-stat"><span>Win rate</span><b>'+wr+'%</b></div></div>'+
+    '<div class="pp-grid"><div class="pp-stat"><span>Баланс</span><b>'+fmt(balance)+' SYND</b></div><div class="pp-stat"><span>Заработано</span><b>'+fmt(val)+' SYND</b></div><div class="pp-stat"><span>Победы</span><b>'+wins+'</b></div><div class="pp-stat"><span>Заезды</span><b>'+races+'</b></div><div class="pp-stat"><span>Процент побед</span><b>'+wr+'%</b></div></div>'+
     '<div class="pp-stat" style="margin-top:8px;"><span>Машины игрока</span><div class="player-lb-cars" style="margin-top:8px;">'+ownedHtml+'</div></div>'+
     '<button class="btn btn-ghost" style="margin-top:12px;" onclick="closePublicProfile()">ЗАКРЫТЬ</button></div></div>';
 }
@@ -1361,7 +1388,7 @@ function beginLaunch(){
     if(c.launchPos>=90){c.launchPos=90;c.launchDir=-1;}
     if(c.launchPos<=8){c.launchPos=8;c.launchDir=1;}
     m.style.left=c.launchPos+'%';
-    if(r)r.textContent=Math.round(900+c.launchPos/100*7600).toLocaleString('fi-FI')+' RPM';
+    if(r)r.textContent=Math.round(900+c.launchPos/100*7600).toLocaleString('fi-FI')+' ОБ/МИН';
   },32);
 }
 function chooseLaunch(mode){
@@ -1399,7 +1426,7 @@ function showRaceCockpit(){
   '<div class="race-map"><div class="speed-effects" id="speed-effects"></div><div class="map-label start">START</div><div class="map-label finish">FINISH</div><div class="map-start"></div><div class="map-finish"></div><div class="map-road"><div class="map-car" id="map-me" style="left:3%"><span>YOU</span></div><div class="map-car ai" id="map-ai" style="left:3%"><span>RIVAL</span></div><div class="race-gap" id="race-gap">СТАРТ</div></div></div>'+
   '<div class="race-event-badge"><span id="race-status">ГАЗ ДЛЯ РАЗГОНА · ЛОВИ ЗОНУ</span><b id="race-route">'+c.route+'</b></div><div class="race-lead" id="race-lead">Позиция: РОВНО · до финиша '+c.trackLength+' м</div>'+'<div class="race-action" id="race-action"></div>'+
 
-  '<div class="cockpit3"><div class="analog-gauge tacho3"><div class="gauge-caption">RPM ×1000</div><div class="dial zone-dial" id="rpm-dial"><div class="dial-ticks"></div><div class="dial-needle" id="rpm-needle"></div><div class="dial-hub"></div><div class="gear3" id="race-gear">1</div><div class="gauge-center"><b id="race-rpm">1.1</b><span>×1000</span></div></div><div class="gauge-scale"><span>0</span><span>4</span><span>8.5</span></div></div>'+
+  '<div class="cockpit3"><div class="analog-gauge tacho3"><div class="gauge-caption">ОБ/МИН ×1000</div><div class="dial zone-dial" id="rpm-dial"><div class="dial-ticks"></div><div class="dial-needle" id="rpm-needle"></div><div class="dial-hub"></div><div class="gear3" id="race-gear">1</div><div class="gauge-center"><b id="race-rpm">1.1</b><span>×1000</span></div></div><div class="gauge-scale"><span>0</span><span>4</span><span>8.5</span></div></div>'+
   '<div class="analog-gauge speed3"><div class="gauge-caption">SPEED</div><div class="dial speed-dial zone-dial" id="speed-dial"><div class="dial-ticks"></div><div class="dial-needle speed-needle" id="speed-needle"></div><div class="dial-hub"></div><div class="gauge-center"><b id="race-speed">0</b><span>KM/H</span></div></div><div class="gauge-scale"><span>0</span><span>'+c.maxSpeed+'</span></div></div></div>'+
   '<div class="race-controls"><button class="race-control pedal brake" id="brake-btn" onpointerdown="raceHold(\'brake\',true)" onpointerup="raceHold(\'brake\',false)" onpointercancel="raceHold(\'brake\',false)" onpointerleave="raceHold(\'brake\',false)"><span class="pedal-face">BRAKE</span><small>ТОРМОЗ</small></button><button class="race-control pedal gas" id="gas-btn" onpointerdown="raceHold(\'gas\',true)" onpointerup="raceHold(\'gas\',false)" onpointercancel="raceHold(\'gas\',false)" onpointerleave="raceHold(\'gas\',false)"><span class="pedal-face">GAS</span><small>ГАЗ</small></button><button class="race-control shift" id="shift-btn" onclick="manualShift()"><span class="shift-face">↑</span><small id="shift-label">SHIFT · 1→2</small></button><button class="race-control nitro" id="nitro-btn" onclick="useRaceNitro()"><span class="nitro-face">N₂O</span><small id="nitro-label">'+state.nitro+' ЗАРЯД.</small><div class="race-nitro-bar"><i id="nitro-bar-fill"></i></div></button></div>'+
   '<div class="shift-mini" id="shift-help">Жёлтая — хорошо · зелёная — идеально</div></div>';
@@ -1621,7 +1648,7 @@ function updateRaceHUD(){
   const help=document.getElementById('shift-help');
   if(help)help.innerText=c.gear>=6?'6-я передача · МАКСИМУМ · держи газ':'Передача '+c.gear+' · жёлтая — хорошо · зелёная — идеально';
   const sb=document.getElementById('shift-btn');if(sb)sb.classList.toggle('locked',c.gear>=6);
-  const sl=document.getElementById('shift-label');if(sl)sl.innerText=c.gear>=6?'6 · MAX':('SHIFT · '+c.gear+'→'+Math.min(6,c.gear+1));
+  const sl=document.getElementById('shift-label');if(sl)sl.innerText=c.gear>=6?'6 · МАКС.':('ПЕРЕКЛЮЧИТЬ · '+c.gear+'→'+Math.min(6,c.gear+1));
   const nb=document.getElementById('nitro-btn'),nl=document.getElementById('nitro-label'),nf=document.getElementById('nitro-bar-fill');
   if(nb)nb.classList.toggle('used',c.nitroUsed||state.nitro<=0);if(nl)nl.innerText=c.nitroUsed?'ИСПОЛЬЗОВАНО':state.nitro+' ЗАРЯД.';if(nf)nf.style.width=(c.nitroActive?Math.round(c.nitroTimer/2.4*100):0)+'%';
 }
@@ -1657,7 +1684,7 @@ function finishRace(playerWins,c){
   el.innerHTML='<div class="race3"><div class="result-box '+(playerWins?'win':'lose')+'"><div class="result-title">'+(playerWins?' ФИНИШ ПЕРВЫМ':' ФИНИШ ВТОРЫМ')+'</div>'+
     '<div class="result-sub">'+(playerWins?'Ты пересёк физическую линию FINISH первым.':'Ты пересёк физическую линию FINISH после соперника.')+'</div>'+
     '<div class="result-reward">'+(reward>0?'+':'')+fmt(reward)+' SYND</div>'+
-    '<div class="xp-gain-box">⭐ +'+xp+' XP · '+c.elapsed.toFixed(2)+' c · MAX '+Math.round(c.topSpeed||c.speed)+' км/ч · PERFECT SHIFT '+c.perfectShifts+'</div></div>'+
+    '<div class="xp-gain-box">⭐ +'+xp+' XP · '+c.elapsed.toFixed(2)+' c · МАКС. '+Math.round(c.topSpeed||c.speed)+' км/ч · ИДЕАЛЬНЫХ ПЕРЕКЛЮЧЕНИЙ '+c.perfectShifts+'</div></div>'+
     '<div class="list-container"><button class="btn btn-select" onclick="switchTab(\'duel-select\')">НОВАЯ СЛУЧАЙНАЯ ПАРА</button><button class="btn btn-ghost" onclick="switchTab(\'garage\')">В ГАРАЖ</button></div></div>';
   updateHeader();saveState();checkAchievements();
   try{
@@ -1823,6 +1850,12 @@ async function serverFetch(input,init={}){
   if(response.status===401){
     onlineAuthReady=false;
     if(await recoverServerSession())response=await run();
+  }
+  if(!response.ok&&response.status!==401){
+    try{
+      const detail=await response.clone().json();
+      console.warn('AutoSyndicate API request failed',{path:String(input),status:response.status,code:detail?.code||'REQUEST_FAILED'});
+    }catch(_){ }
   }
   return response;
 }
@@ -2402,7 +2435,7 @@ async function claimPvpResults(){
     const title=document.getElementById('tune-car-title');if(title)title.innerText='Тюнинг · '+car.name;
     const c=document.getElementById('tune-list');if(!c)return;
     const bars=[['Мощность',Math.min(100,currentPower/1500*100),currentPower+' л.с.'],['Разгон',Math.min(100,profile.accel/2.1*100),profile.accel.toFixed(2)+'x'],['Окно SHIFT',Math.min(100,profile.yellowWidth/.12*100),Math.round(profile.yellowWidth*200)+'%'],['Сцепление',Math.min(100,profile.launchGrip*100),Math.round(profile.launchGrip*100)+'%']];
-    let html='<div class="tune-overview"><div class="tune-overview-top"><div><span>BUILD SCORE</span><b>'+rating+'/100</b></div><div><span>ВЛОЖЕНО</span><b>'+fmt(value)+' SYND</b></div></div><div class="tune-chart">'+bars.map(x=>'<div class="tune-chart-row"><span>'+x[0]+'</span><div><i style="width:'+x[1]+'%"></i></div><b>'+x[2]+'</b></div>').join('')+'</div></div>';
+    let html='<div class="tune-overview"><div class="tune-overview-top"><div><span>РЕЙТИНГ СБОРКИ</span><b>'+rating+'/100</b></div><div><span>ВЛОЖЕНО</span><b>'+fmt(value)+' SYND</b></div></div><div class="tune-chart">'+bars.map(x=>'<div class="tune-chart-row"><span>'+x[0]+'</span><div><i style="width:'+x[1]+'%"></i></div><b>'+x[2]+'</b></div>').join('')+'</div></div>';
     TUNE_TYPES.forEach(t=>{
       const lvl=Number(upg[t.key])||0,maxed=lvl>=5,price=maxed?0:tuneStagePrice(car,lvl),can=state.coins>=price;
       const test={...upg};if(!maxed)test[t.key]=lvl+1;
@@ -2410,10 +2443,10 @@ async function claimPvpResults(){
       if(!maxed){let mult=1;TUNE_TYPES.forEach(q=>{const l=Number(test[q.key])||0;for(let i=0;i<l;i++)mult+=q.hpPerStage[i];});const cond=getCondition(carId);if(cond<40)mult*=.85;else if(cond<70)mult*=.93;after=Math.round(car.power*mult);}
       const dots=Array.from({length:5},(_,i)=>'<i class="tune-dot '+(i<lvl?'on':'')+'"></i>').join('');
       const note=t.key==='gearbox'?'Расширяет жёлтое/зелёное окно, ускоряет набор оборотов и снижает штраф ошибки.':t.desc;
-      html+='<div class="tune-v8-card"><div class="tune-v8-head"><div class="tune-part-icon">'+svgIcon(t.key==='gearbox'?'gear':t.key==='tires'?'car':t.key==='engine'?'wrench':'bolt')+'</div><div><b>'+t.name+'</b><span>'+note+'</span></div><strong>STAGE '+lvl+'/5</strong></div><div class="tune-dots">'+dots+'</div><div class="tune-compare"><span>Сейчас <b>'+before+' л.с.</b></span><span>После <b>'+(maxed?'MAX':after+' л.с.')+'</b></span></div><button class="tune-btn '+(maxed?'maxed':'')+'" '+(maxed||!can?'disabled':'')+' onclick="upgradeTune('+carId+',\''+t.key+'\')">'+(maxed?'МАКСИМУМ':fmt(price)+' SYND · УСТАНОВИТЬ')+'</button></div>';
+      html+='<div class="tune-v8-card"><div class="tune-v8-head"><div class="tune-part-icon">'+svgIcon(t.key==='gearbox'?'gear':t.key==='tires'?'car':t.key==='engine'?'wrench':'bolt')+'</div><div><b>'+t.name+'</b><span>'+note+'</span></div><strong>УР. '+lvl+'/5</strong></div><div class="tune-dots">'+dots+'</div><div class="tune-compare"><span>Сейчас <b>'+before+' л.с.</b></span><span>После <b>'+(maxed?'МАКС.':after+' л.с.')+'</b></span></div><button class="tune-btn '+(maxed?'maxed':'')+'" '+(maxed||!can?'disabled':'')+' onclick="upgradeTune('+carId+',\''+t.key+'\')">'+(maxed?'МАКСИМУМ':fmt(price)+' SYND · УСТАНОВИТЬ')+'</button></div>';
     });
     const hist=(state.tuningHistory?.[carId]||[]).slice().reverse();
-    html+='<div class="tune-history"><div class="v8-section-head"><b>ИСТОРИЯ СБОРКИ</b><span>'+hist.length+' операций</span></div>'+(hist.length?hist.slice(0,8).map(x=>'<div class="history-row"><span>'+PART_LABEL[x.part]+' · STAGE '+x.level+'</span><b>'+fmt(x.price)+' SYND</b></div>').join(''):'<div class="empty-note">Установок пока нет</div>')+'</div>';
+    html+='<div class="tune-history"><div class="v8-section-head"><b>ИСТОРИЯ СБОРКИ</b><span>'+hist.length+' операций</span></div>'+(hist.length?hist.slice(0,8).map(x=>'<div class="history-row"><span>'+PART_LABEL[x.part]+' · УР. '+x.level+'</span><b>'+fmt(x.price)+' SYND</b></div>').join(''):'<div class="empty-note">Установок пока нет</div>')+'</div>';
     c.innerHTML=html;
     document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));document.getElementById('screen-tune').classList.add('active');document.getElementById('main-scroll').scrollTop=0;
   };
@@ -2466,19 +2499,19 @@ async function claimPvpResults(){
     {id:16,name:'Cipher',power:1430,reward:12500,unlockLevel:15,car:'Bugatti Chiron',rating:99,style:'Безошибочный',favoriteTracks:['Ночной проспект','Портовый обход'],wins:497,losses:31,avatar:'CP',taunt:'Я считаю твои ошибки до старта.',preLines:['Шанс у тебя есть. Маленький.','Сделай идеальный старт. Он тебе понадобится.'],winLine:'Ошибка номер один была выйти против меня.',loseLine:'Без ошибок. Именно так и надо.',boss:true},
     {id:'npc_041',name:'Helix',power:245,reward:260,unlockLevel:1,car:'Volkswagen Golf Mk2',rating:59,style:'Чистый старт',favoriteTracks:['Промзона'],wins:21,losses:26,avatar:'HX',taunt:'Не отдавай мне первые двадцать метров.',preLines:['Старт решит всё.'],winLine:'Этого зазора хватило.',loseLine:'Ты снял старт идеально.'},
     {id:'npc_042',name:'Kestrel',power:290,reward:320,unlockLevel:1,car:'Toyota AE86',rating:62,style:'Высокие обороты',favoriteTracks:['Старая эстакада'],wins:33,losses:30,avatar:'KS',taunt:'Держи мотор в зоне, если успеешь.',preLines:['Не упусти обороты.'],winLine:'Ты слишком рано отпустил передачу.',loseLine:'Хороший диапазон.'},
-    {id:'npc_043',name:'Echo',power:335,reward:390,unlockLevel:1,car:'Honda Civic',rating:65,style:'Поздний SHIFT',favoriteTracks:['Тоннель'],wins:42,losses:29,avatar:'EC',taunt:'Я переключаюсь позже большинства.',preLines:['Посмотрим, кто дольше держит передачу.'],winLine:'Отсечка была на моей стороне.',loseLine:'Точно в зелёную.'},
+    {id:'npc_043',name:'Echo',power:335,reward:390,unlockLevel:1,car:'Honda Civic',rating:65,style:'Позднее переключение',favoriteTracks:['Тоннель'],wins:42,losses:29,avatar:'EC',taunt:'Я переключаюсь позже большинства.',preLines:['Посмотрим, кто дольше держит передачу.'],winLine:'Отсечка была на моей стороне.',loseLine:'Точно в зелёную.'},
     {id:'npc_044',name:'Jett',power:385,reward:470,unlockLevel:1,car:'Nissan Silvia S15',rating:68,style:'Рывок со старта',favoriteTracks:['Портовый обход'],wins:57,losses:32,avatar:'JT',taunt:'Если увидишь мой бампер — уже поздно.',preLines:['Не моргай на зелёном.'],winLine:'Первый рывок был решающим.',loseLine:'Ты забрал старт.'},
     {id:'npc_045',name:'Riven',power:430,reward:560,unlockLevel:1,car:'Mazda RX-7 FD',rating:71,style:'Контроль тяги',favoriteTracks:['Промзона'],wins:64,losses:35,avatar:'RV',taunt:'Мощность бесполезна без сцепления.',preLines:['Держи колёса за асфальт.'],winLine:'Тяга решила.',loseLine:'Чисто реализовал мощность.'},
-    {id:'npc_046',name:'Mako',power:500,reward:700,unlockLevel:2,car:'Mitsubishi Evo IX',rating:74,style:'Полный привод',favoriteTracks:['Портовый обход'],wins:82,losses:38,avatar:'MK',taunt:'На старте я не оставляю места.',preLines:['Первая передача будет короткой.'],winLine:'Полный привод сделал свою работу.',loseLine:'Ты удержал меня.'},
-    {id:'npc_047',name:'Pulse',power:565,reward:860,unlockLevel:3,car:'Subaru WRX STI',rating:77,style:'Темповый',favoriteTracks:['Ночной проспект'],wins:96,losses:41,avatar:'PL',taunt:'Я не ускоряюсь рывками. Я держу давление.',preLines:['Сохраняй темп до финиша.'],winLine:'Темп не просел.',loseLine:'Ты был стабильнее.'},
-    {id:'npc_048',name:'Cinder',power:630,reward:1050,unlockLevel:4,car:'Ford Mustang GT',rating:80,style:'Тяга с низов',favoriteTracks:['Промзона'],wins:112,losses:47,avatar:'CD',taunt:'Мой момент начинается раньше твоего.',preLines:['Слушай двигатель.'],winLine:'Момента хватило.',loseLine:'Ты растянул передачи лучше.'},
-    {id:'npc_049',name:'Onyx',power:705,reward:1350,unlockLevel:5,car:'BMW M4 Competition',rating:83,style:'Точный SHIFT',favoriteTracks:['Тоннель'],wins:139,losses:45,avatar:'OX',taunt:'Одна ошибка в переключении — и заезд мой.',preLines:['Без лишних движений.'],winLine:'Я дождался ошибки.',loseLine:'Безошибочно. Уважаю.'},
-    {id:'npc_050',name:'Atlas',power:780,reward:1750,unlockLevel:6,car:'Mercedes-AMG GT',rating:85,style:'Длинная передача',favoriteTracks:['Старая эстакада'],wins:151,losses:52,avatar:'AT',taunt:'Я заберу вторую половину дистанции.',preLines:['Не празднуй ранний отрыв.'],winLine:'Финиш важнее старта.',loseLine:'Ты не отдал темп.'},
-    {id:'npc_051',name:'Crow',power:850,reward:2200,unlockLevel:7,car:'Audi RS6',rating:87,style:'Холодный расчёт',favoriteTracks:['Портовый обход'],wins:176,losses:49,avatar:'CR',taunt:'Я уже знаю, где тебя атаковать.',preLines:['Третья передача покажет всё.'],winLine:'Расчёт сошёлся.',loseLine:'Сегодня я просчитался.'},
-    {id:'npc_052',name:'Ion',power:925,reward:2850,unlockLevel:8,car:'Porsche 911 Turbo S',rating:89,style:'Короткие окна',favoriteTracks:['Ночной проспект'],wins:205,losses:44,avatar:'IN',taunt:'Зелёная зона будет короче, чем тебе хочется.',preLines:['Работай точно.'],winLine:'Точность победила.',loseLine:'Ты попал во все окна.'},
-    {id:'npc_053',name:'Lock',power:1005,reward:3600,unlockLevel:9,car:'Nissan GT-R R35',rating:91,style:'Launch control',favoriteTracks:['Промзона'],wins:236,losses:50,avatar:'LK',taunt:'Я закрываю заезд ещё на старте.',preLines:['Поймай идеальный launch.'],winLine:'Дальше догонять было уже поздно.',loseLine:'Ты выбил меня со старта.'},
-    {id:'npc_054',name:'Halo',power:1080,reward:4450,unlockLevel:10,car:'Audi R8 V10',rating:92,style:'Высокий RPM',favoriteTracks:['Тоннель'],wins:258,losses:46,avatar:'HL',taunt:'Мой мотор живёт там, где твой уже сдаётся.',preLines:['Не бойся красной зоны.'],winLine:'Обороты сделали разницу.',loseLine:'Ты выдержал диапазон.'},
-    {id:'npc_055',name:'Specter',power:1160,reward:5500,unlockLevel:11,car:'McLaren 720S',rating:94,style:'Поздняя атака',favoriteTracks:['Портовый обход'],wins:292,losses:41,avatar:'SP',taunt:'До середины трассы можешь считать себя первым.',preLines:['Не смотри назад.'],winLine:'Я пришёл тогда, когда нужно.',loseLine:'Ты не оставил мне окна.'},
+    {id:'npc_046',name:'Mako',power:500,reward:700,unlockLevel:1,car:'Mitsubishi Evo IX',rating:74,style:'Полный привод',favoriteTracks:['Портовый обход'],wins:82,losses:38,avatar:'MK',taunt:'На старте я не оставляю места.',preLines:['Первая передача будет короткой.'],winLine:'Полный привод сделал свою работу.',loseLine:'Ты удержал меня.'},
+    {id:'npc_047',name:'Pulse',power:565,reward:860,unlockLevel:1,car:'Subaru WRX STI',rating:77,style:'Темповый',favoriteTracks:['Ночной проспект'],wins:96,losses:41,avatar:'PL',taunt:'Я не ускоряюсь рывками. Я держу давление.',preLines:['Сохраняй темп до финиша.'],winLine:'Темп не просел.',loseLine:'Ты был стабильнее.'},
+    {id:'npc_048',name:'Cinder',power:630,reward:1050,unlockLevel:1,car:'Ford Mustang GT',rating:80,style:'Тяга с низов',favoriteTracks:['Промзона'],wins:112,losses:47,avatar:'CD',taunt:'Мой момент начинается раньше твоего.',preLines:['Слушай двигатель.'],winLine:'Момента хватило.',loseLine:'Ты растянул передачи лучше.'},
+    {id:'npc_049',name:'Onyx',power:705,reward:1350,unlockLevel:1,car:'BMW M4 Competition',rating:83,style:'Точное переключение',favoriteTracks:['Тоннель'],wins:139,losses:45,avatar:'OX',taunt:'Одна ошибка в переключении — и заезд мой.',preLines:['Без лишних движений.'],winLine:'Я дождался ошибки.',loseLine:'Безошибочно. Уважаю.'},
+    {id:'npc_050',name:'Atlas',power:780,reward:1750,unlockLevel:1,car:'Mercedes-AMG GT',rating:85,style:'Длинная передача',favoriteTracks:['Старая эстакада'],wins:151,losses:52,avatar:'AT',taunt:'Я заберу вторую половину дистанции.',preLines:['Не празднуй ранний отрыв.'],winLine:'Финиш важнее старта.',loseLine:'Ты не отдал темп.'},
+    {id:'npc_051',name:'Crow',power:850,reward:2200,unlockLevel:2,car:'Audi RS6',rating:87,style:'Холодный расчёт',favoriteTracks:['Портовый обход'],wins:176,losses:49,avatar:'CR',taunt:'Я уже знаю, где тебя атаковать.',preLines:['Третья передача покажет всё.'],winLine:'Расчёт сошёлся.',loseLine:'Сегодня я просчитался.'},
+    {id:'npc_052',name:'Ion',power:925,reward:2850,unlockLevel:2,car:'Porsche 911 Turbo S',rating:89,style:'Короткие окна',favoriteTracks:['Ночной проспект'],wins:205,losses:44,avatar:'IN',taunt:'Зелёная зона будет короче, чем тебе хочется.',preLines:['Работай точно.'],winLine:'Точность победила.',loseLine:'Ты попал во все окна.'},
+    {id:'npc_053',name:'Lock',power:1005,reward:3600,unlockLevel:3,car:'Nissan GT-R R35',rating:91,style:'Контроль старта',favoriteTracks:['Промзона'],wins:236,losses:50,avatar:'LK',taunt:'Я закрываю заезд ещё на старте.',preLines:['Поймай идеальный старт.'],winLine:'Дальше догонять было уже поздно.',loseLine:'Ты выбил меня со старта.'},
+    {id:'npc_054',name:'Halo',power:1080,reward:4450,unlockLevel:4,car:'Audi R8 V10',rating:92,style:'Высокие обороты',favoriteTracks:['Тоннель'],wins:258,losses:46,avatar:'HL',taunt:'Мой мотор живёт там, где твой уже сдаётся.',preLines:['Не бойся красной зоны.'],winLine:'Обороты сделали разницу.',loseLine:'Ты выдержал диапазон.'},
+    {id:'npc_055',name:'Specter',power:1160,reward:5500,unlockLevel:5,car:'McLaren 720S',rating:94,style:'Поздняя атака',favoriteTracks:['Портовый обход'],wins:292,losses:41,avatar:'SP',taunt:'До середины трассы можешь считать себя первым.',preLines:['Не смотри назад.'],winLine:'Я пришёл тогда, когда нужно.',loseLine:'Ты не оставил мне окна.'},
     {id:'npc_056',name:'Venom',power:1240,reward:6800,unlockLevel:12,car:'Ferrari 488 Pista',rating:95,style:'Агрессивный буст',favoriteTracks:['Ночной проспект'],wins:319,losses:45,avatar:'VN',taunt:'Давление начинается после второй.',preLines:['Удержи линию.'],winLine:'Ты не выдержал темп.',loseLine:'Ты пережил давление.'},
     {id:'npc_057',name:'Rift',power:1320,reward:8200,unlockLevel:13,car:'Ferrari SF90',rating:96,style:'Гибридный рывок',favoriteTracks:['Старая эстакада'],wins:347,losses:39,avatar:'RF',taunt:'Разрыв появится внезапно.',preLines:['Первые метры ничего не значат.'],winLine:'Разрыв открылся вовремя.',loseLine:'Ты его закрыл.'},
     {id:'npc_058',name:'Apex',power:1410,reward:9900,unlockLevel:14,car:'Lamborghini Huracan',rating:97,style:'Идеальная траектория',favoriteTracks:['Промзона'],wins:381,losses:36,avatar:'AX',taunt:'На вершине нет места для двоих.',preLines:['Заезд будет коротким.'],winLine:'Вершина остаётся моей.',loseLine:'Сегодня вершина твоя.',boss:true},
@@ -2503,7 +2536,7 @@ async function claimPvpResults(){
   ];
   opponentsDB.forEach((o,i)=>Object.assign(o,baseProfiles[i]||{},o));
   function rivalMeta(opp){
-    const rec=state.rivalRecords?.[String(opp.id)]||{wins:0,losses:0};return {avatar:opp.avatar||String(opp.name).slice(0,2).toUpperCase(),style:opp.style||'Сбалансированный',favoriteTracks:opp.favoriteTracks||['Промзона'],wins:opp.wins||0,losses:opp.losses||0,car:opp.car||'Street build',rating:opp.rating||Math.min(99,Math.round(50+(opp.power||200)/18)),record:rec};
+    const rec=state.rivalRecords?.[String(opp.id)]||{wins:0,losses:0};return {avatar:opp.avatar||String(opp.name).slice(0,2).toUpperCase(),style:opp.style||'Сбалансированный',favoriteTracks:opp.favoriteTracks||['Промзона'],wins:opp.wins||0,losses:opp.losses||0,car:opp.car||'Уличная сборка',rating:opp.rating||Math.min(99,Math.round(50+(opp.power||200)/18)),record:rec};
   }
   renderOpponents=function(){
     updateHeader();const c=document.getElementById('opponent-list');if(!c)return;c.innerHTML='';const car=carsDB.find(x=>x.id===state.activeCarId);if(!car){c.innerHTML='<div class="empty-note">Сначала выберите активную машину.</div>';return;}
@@ -2517,7 +2550,7 @@ async function claimPvpResults(){
     c.innerHTML='<div class="race-event-badge"><span>СЕТКА СОПЕРНИКОВ</span><b>'+pool.length+' ДОСТУПНО</b></div>'+pool.map((opp,idx)=>{
       const m=rivalMeta(opp),winChance=Math.max(5,Math.min(95,Math.round(50+(myPower-opp.power)/Math.max(opp.power,1)*86))),fee=entryFeeFor(opp),recent=history.includes(String(opp.id));
       const r=state.tournamentRuns[String(opp.id)]||{},day=new Date().toISOString().slice(0,10),count=state.duelSub==='tour'&&r.day===day?(Number(r.count)||0):0,mult=state.duelSub==='tour'?([1,.72,.48][Math.min(2,count)]||.48):1,reward=Math.round(opp.reward*mult);
-      return '<div class="rival-card '+(opp.boss?'boss':'')+'" style="animation-delay:'+idx*45+'ms"><div class="rival-top"><div class="rival-avatar">'+escapeHtml(m.avatar)+'</div><div class="rival-id"><b>'+escapeHtml(opp.name)+'</b><span>'+escapeHtml(m.car)+' · RATING '+m.rating+'</span></div><div class="rival-power">'+opp.power+'<small>л.с.</small></div></div><div class="rival-quote">“'+escapeHtml(opp.taunt||pick(opp.preLines||['Встретимся на финише.']))+'”</div><div class="rival-profile-grid"><span>Стиль<b>'+escapeHtml(m.style)+'</b></span><span>Любит<b>'+escapeHtml(m.favoriteTracks[0])+'</b></span><span>История<b>'+m.wins+'–'+m.losses+'</b></span><span>С вами<b>'+m.record.wins+'–'+m.record.losses+'</b></span></div><div class="odds-bar-bg"><div class="odds-win" style="width:'+winChance+'%"></div><div class="odds-lose" style="width:'+(100-winChance)+'%"></div></div><div class="opp-foot"><span>Шанс <b>'+winChance+'%</b></span><span>Вход <b>'+fmt(fee)+'</b></span><span>Приз <b>'+fmt(reward)+'</b></span></div><button class="btn btn-select" onclick="prepareRace(\''+String(opp.id).replace(/'/g,"\\'")+'\',\''+(state.duelSub==='tour'?'tour':'normal')+'\')">НА ЛИНИЮ</button>'+(recent?'<small class="recent-rival">Недавняя встреча</small>':'')+'</div>';
+      return '<div class="rival-card '+(opp.boss?'boss':'')+'" style="animation-delay:'+idx*45+'ms"><div class="rival-top"><div class="rival-avatar">'+escapeHtml(m.avatar)+'</div><div class="rival-id"><b>'+escapeHtml(opp.name)+'</b><span>'+escapeHtml(m.car)+' · РЕЙТИНГ '+m.rating+'</span></div><div class="rival-power">'+opp.power+'<small>л.с.</small></div></div><div class="rival-quote">“'+escapeHtml(opp.taunt||pick(opp.preLines||['Встретимся на финише.']))+'”</div><div class="rival-profile-grid"><span>Стиль<b>'+escapeHtml(m.style)+'</b></span><span>Любит<b>'+escapeHtml(m.favoriteTracks[0])+'</b></span><span>История<b>'+m.wins+'–'+m.losses+'</b></span><span>С вами<b>'+m.record.wins+'–'+m.record.losses+'</b></span></div><div class="odds-bar-bg"><div class="odds-win" style="width:'+winChance+'%"></div><div class="odds-lose" style="width:'+(100-winChance)+'%"></div></div><div class="opp-foot"><span>Шанс <b>'+winChance+'%</b></span><span>Вход <b>'+fmt(fee)+'</b></span><span>Приз <b>'+fmt(reward)+'</b></span></div><button class="btn btn-select" onclick="prepareRace(\''+String(opp.id).replace(/'/g,"\\'")+'\',\''+(state.duelSub==='tour'?'tour':'normal')+'\')">НА ЛИНИЮ</button>'+(recent?'<small class="recent-rival">Недавняя встреча</small>':'')+'</div>';
     }).join('');
   };
 
@@ -2536,13 +2569,13 @@ async function claimPvpResults(){
   };
   renderRaceBrief=function(){
     const c=raceCtx,car=carsDB.find(x=>x.id===state.activeCarId),o=c.opp,m=c.rival||rivalMeta(o),line=pick(o.preLines||[o.taunt||'Встретимся на финише.']);
-    document.getElementById('race-content').innerHTML='<div class="race3"><div class="race-event-badge"><span>'+escapeHtml(c.route)+'</span><b>'+c.trackLength+' М · STREET DUEL</b></div><div class="race3-top"><div class="race3-driver"><b>ВЫ</b><span>'+escapeHtml(car.name)+' · '+getEffectivePower(car)+' л.с.</span></div><div class="race3-vs">VS</div><div class="race3-driver" style="text-align:right"><b>'+escapeHtml(o.name)+'</b><span>'+escapeHtml(m.car)+' · '+o.power+' л.с.</span></div></div><div class="rival-intro"><div class="rival-avatar large">'+escapeHtml(m.avatar)+'</div><div><span>'+escapeHtml(m.style)+' · RATING '+m.rating+'</span><b>“'+escapeHtml(line)+'”</b><small>Любимые трассы: '+escapeHtml(m.favoriteTracks.join(' · '))+' · Карьера '+m.wins+'–'+m.losses+'</small></div></div><div class="pre-race-box"><div class="pre-race-line"><span>Вход</span><b>'+fmt(c.fee)+' SYND</b></div><div class="pre-race-line"><span>Топливо</span><b>'+c.fuelCost+'%</b></div><div class="pre-race-line"><span>Победа</span><b>'+fmt(o.reward)+' SYND</b></div><div class="pre-race-line"><span>КПП</span><b>STAGE '+c.gearboxLevel+'/5</b></div></div><button class="big-btn" onclick="beginLaunch()">ВЫЕХАТЬ НА ЛИНИЮ</button><button class="btn btn-ghost" style="margin-top:8px" onclick="switchTab(\'duel-select\')">ОТМЕНА</button></div>';
+    document.getElementById('race-content').innerHTML='<div class="race3"><div class="race-event-badge"><span>'+escapeHtml(c.route)+'</span><b>'+c.trackLength+' М · STREET DUEL</b></div><div class="race3-top"><div class="race3-driver"><b>ВЫ</b><span>'+escapeHtml(car.name)+' · '+getEffectivePower(car)+' л.с.</span></div><div class="race3-vs">VS</div><div class="race3-driver" style="text-align:right"><b>'+escapeHtml(o.name)+'</b><span>'+escapeHtml(m.car)+' · '+o.power+' л.с.</span></div></div><div class="rival-intro"><div class="rival-avatar large">'+escapeHtml(m.avatar)+'</div><div><span>'+escapeHtml(m.style)+' · РЕЙТИНГ '+m.rating+'</span><b>“'+escapeHtml(line)+'”</b><small>Любимые трассы: '+escapeHtml(m.favoriteTracks.join(' · '))+' · Карьера '+m.wins+'–'+m.losses+'</small></div></div><div class="pre-race-box"><div class="pre-race-line"><span>Вход</span><b>'+fmt(c.fee)+' SYND</b></div><div class="pre-race-line"><span>Топливо</span><b>'+c.fuelCost+'%</b></div><div class="pre-race-line"><span>Победа</span><b>'+fmt(o.reward)+' SYND</b></div><div class="pre-race-line"><span>КПП</span><b>УР. '+c.gearboxLevel+'/5</b></div></div><button class="big-btn" onclick="beginLaunch()">ВЫЕХАТЬ НА ЛИНИЮ</button><button class="btn btn-ghost" style="margin-top:8px" onclick="switchTab(\'duel-select\')">ОТМЕНА</button></div>';
   };
   beginLaunch=function(){
     const car=carsDB.find(x=>x.id===state.activeCarId),c=raceCtx;if(!c)return;state.coins-=c.fee;state.stats.totalSpent+=c.fee;state.fuel[car.id]=Math.max(0,getFuel(car.id)-c.fuelCost);updateHeader();saveState();
-    document.getElementById('race-content').innerHTML='<div class="race3"><div class="race-event-badge"><span>LAUNCH CONTROL</span><b>ПОЙМАЙ ЗОНУ</b></div><div class="launch-panel"><div class="launch-title">ЧУВСТВИТЕЛЬНЫЙ СТАРТ</div><div class="launch-copy">Зелёная зона даёт максимальное сцепление и стартовый импульс. Жёлтая сохраняет хороший темп.</div><div class="launch-meter"><div class="launch-zone yellow"></div><div class="launch-zone green"></div><div class="launch-marker" id="launch-marker"></div></div><div class="launch-rpm" id="launch-rpm">1 100 RPM</div><div class="launch-buttons"><button class="launch-btn safe" onclick="chooseLaunch(\'safe\')">КОНТРОЛЬ<small>стабильный зацеп</small></button><button class="launch-btn hard" onclick="chooseLaunch(\'spin\')">АТАКА<small>максимальный импульс</small></button></div></div></div>';
+    document.getElementById('race-content').innerHTML='<div class="race3"><div class="race-event-badge"><span>КОНТРОЛЬ СТАРТА</span><b>ПОЙМАЙ ЗОНУ</b></div><div class="launch-panel"><div class="launch-title">ЧУВСТВИТЕЛЬНЫЙ СТАРТ</div><div class="launch-copy">Зелёная зона даёт максимальное сцепление и стартовый импульс. Жёлтая сохраняет хороший темп.</div><div class="launch-meter"><div class="launch-zone yellow"></div><div class="launch-zone green"></div><div class="launch-marker" id="launch-marker"></div></div><div class="launch-rpm" id="launch-rpm">1 100 RPM</div><div class="launch-buttons"><button class="launch-btn safe" onclick="chooseLaunch(\'safe\')">КОНТРОЛЬ<small>стабильный зацеп</small></button><button class="launch-btn hard" onclick="chooseLaunch(\'spin\')">АТАКА<small>максимальный импульс</small></button></div></div></div>';
     c.launchPos=10;c.launchDir=1;c.launchLast=performance.now();
-    const tick=(now)=>{if(!raceCtx||raceCtx!==c||c.finished||c.launchMode)return;const dt=Math.min(.04,(now-c.launchLast)/1000);c.launchLast=now;c.launchPos+=c.launchDir*(49+c.profile.rpmRate*9)*dt;if(c.launchPos>=92){c.launchPos=92;c.launchDir=-1;}if(c.launchPos<=6){c.launchPos=6;c.launchDir=1;}const m=document.getElementById('launch-marker'),r=document.getElementById('launch-rpm');if(m)m.style.left=c.launchPos+'%';if(r)r.textContent=Math.round(900+c.launchPos/100*7800).toLocaleString('ru-RU')+' RPM';c.launchRaf=requestAnimationFrame(tick);};
+    const tick=(now)=>{if(!raceCtx||raceCtx!==c||c.finished||c.launchMode)return;const dt=Math.min(.04,(now-c.launchLast)/1000);c.launchLast=now;c.launchPos+=c.launchDir*(49+c.profile.rpmRate*9)*dt;if(c.launchPos>=92){c.launchPos=92;c.launchDir=-1;}if(c.launchPos<=6){c.launchPos=6;c.launchDir=1;}const m=document.getElementById('launch-marker'),r=document.getElementById('launch-rpm');if(m)m.style.left=c.launchPos+'%';if(r)r.textContent=Math.round(900+c.launchPos/100*7800).toLocaleString('ru-RU')+' ОБ/МИН';c.launchRaf=requestAnimationFrame(tick);};
     c.launchRaf=requestAnimationFrame(tick);
   };
   const baseChooseLaunch=chooseLaunch;
@@ -2550,8 +2583,8 @@ async function claimPvpResults(){
   manualShift=function(){
     const c=raceCtx;if(!c||c.finished||c.startLocked)return;if(c.gear>=6){showShiftText('6-Я ПЕРЕДАЧА · ДЕРЖИ ТЯГУ',false);return;}
     const p=c.rpm/c.redline,g=c.profile.greenWidth,y=c.profile.yellowWidth,center=.78,perfect=Math.abs(p-center)<=g,good=Math.abs(p-center)<=y;c.shiftCount++;c.gear=Math.min(6,c.gear+1);
-    if(perfect){c.perfectShifts++;c.goodShifts++;c.shiftBoost=1.18+Math.min(.05,c.profile.trans*.01);c.shiftBoostTimer=.62;c.rpm=Math.max(3400,c.rpm*c.profile.shiftRecovery);c.speed+=Math.max(3,c.speed*.018);recordContractEvent('perfectShift',1);haptic('success');showAction('PERFECT SHIFT · BOOST ТЯГИ');showShiftText('ИДЕАЛЬНЫЙ SHIFT · МИНИМУМ ПОТЕРИ RPM',true);}
-    else if(good){c.goodShifts++;c.shiftBoost=1.08;c.shiftBoostTimer=.38;c.rpm=Math.max(3000,c.rpm*c.profile.shiftRecovery*.95);c.speed+=2;haptic('medium');showAction('GOOD SHIFT · УСКОРЕНИЕ');showShiftText('ХОРОШИЙ SHIFT · ТЯГА +8%',false);}
+    if(perfect){c.perfectShifts++;c.goodShifts++;c.shiftBoost=1.18+Math.min(.05,c.profile.trans*.01);c.shiftBoostTimer=.62;c.rpm=Math.max(3400,c.rpm*c.profile.shiftRecovery);c.speed+=Math.max(3,c.speed*.018);recordContractEvent('perfectShift',1);haptic('success');showAction('ИДЕАЛЬНОЕ ПЕРЕКЛЮЧЕНИЕ · BOOST ТЯГИ');showShiftText('ИДЕАЛЬНОЕ ПЕРЕКЛЮЧЕНИЕ · МИНИМУМ ПОТЕРИ ОБОРОТОВ',true);}
+    else if(good){c.goodShifts++;c.shiftBoost=1.08;c.shiftBoostTimer=.38;c.rpm=Math.max(3000,c.rpm*c.profile.shiftRecovery*.95);c.speed+=2;haptic('medium');showAction('ХОРОШЕЕ ПЕРЕКЛЮЧЕНИЕ · УСКОРЕНИЕ');showShiftText('ХОРОШЕЕ ПЕРЕКЛЮЧЕНИЕ · ТЯГА +8%',false);}
     else{c.errors++;const late=p>.96,rec=c.profile.errorRecovery;c.shiftBoost=Math.max(.86,.78+c.profile.trans*.018);c.shiftBoostTimer=.48;c.rpm=Math.max(late?2800:2200,c.rpm*(late?rec*.78:rec*.88));c.speed*=Math.max(.91,.86+c.profile.trans*.012);haptic('warning');showAction((late?'ПОЗДНИЙ':'РАННИЙ')+' SHIFT · ПОТЕРЯ ТЯГИ');showShiftText((late?'ПОЗДНО':'РАНО')+' · КПП СТАБИЛИЗИРУЕТ ТЯГУ',false);}
     updateRaceHUD();
   };
@@ -2593,7 +2626,7 @@ async function claimPvpResults(){
       const reserved=escrowCarIds();const possible=carsDB.filter(c=>c.id>=18&&!state.ownedCars.includes(c.id)&&!reserved.has(c.id));if(possible.length){const car=pick(possible);return {type:'car',rarity:rarity==='mythic'?'mythic':'legendary',label:car.name,carId:car.id};}
     }
     if(typeRoll<.46){const mult={common:[.45,1.05],rare:[.9,1.7],epic:[1.5,2.8],legendary:[2.5,4.5],mythic:[4,7]}[rarity],amount=Math.round(cs.price*(mult[0]+secureRandom()*(mult[1]-mult[0])));return {type:'coins',rarity,label:fmt(amount)+' SYND',amount};}
-    if(typeRoll<.75){const choices=TUNE_TYPES.filter(t=>(getUpg(state.activeCarId)[t.key]||0)<5);if(choices.length){const part=pick(choices);return {type:'tuning',rarity,label:PART_LABEL[part.key]+' · +1 STAGE',part:part.key};}}
+    if(typeRoll<.75){const choices=TUNE_TYPES.filter(t=>(getUpg(state.activeCarId)[t.key]||0)<5);if(choices.length){const part=pick(choices);return {type:'tuning',rarity,label:PART_LABEL[part.key]+' · +1 УР.',part:part.key};}}
     const plate=makePlate(rarity);return {type:'plate',rarity,label:plate.text,plate};
   }
   function grantCasePrize(prize,cs){
@@ -2907,10 +2940,10 @@ async function claimPvpResults(){
     if(perfect){
       c.perfectShifts++;c.goodShifts++;c.shiftBoost=1.28+Math.min(.07,c.profile.trans*.012);c.shiftBoostTimer=.62;
       c.speed=Math.min(c.gearCaps[c.gear],c.speed+7.5+c.speed*.035);c.rpm=Math.max(3300,c.rpm*c.profile.shiftRecovery);
-      recordContractEvent('perfectShift',1);haptic('success');showAction('PERFECT SHIFT · ИМПУЛЬС ТЯГИ');showShiftText('ЗЕЛЁНАЯ ЗОНА · УСКОРЕНИЕ',true);
+      recordContractEvent('perfectShift',1);haptic('success');showAction('ИДЕАЛЬНОЕ ПЕРЕКЛЮЧЕНИЕ · ИМПУЛЬС ТЯГИ');showShiftText('ЗЕЛЁНАЯ ЗОНА · УСКОРЕНИЕ',true);
     }else if(good){
       c.goodShifts++;c.shiftBoost=1.11;c.shiftBoostTimer=.38;c.speed=Math.min(c.gearCaps[c.gear],c.speed+3.2);c.rpm=Math.max(2900,c.rpm*c.profile.shiftRecovery*.94);
-      haptic('medium');showAction('GOOD SHIFT · ТЯГА СОХРАНЕНА');showShiftText('ЖЁЛТАЯ ЗОНА · ХОРОШИЙ SHIFT',false);
+      haptic('medium');showAction('ХОРОШЕЕ ПЕРЕКЛЮЧЕНИЕ · ТЯГА СОХРАНЕНА');showShiftText('ЖЁЛТАЯ ЗОНА · ХОРОШИЙ SHIFT',false);
     }else{
       c.errors++;const late=p>.96;c.shiftBoost=Math.max(.84,.76+c.profile.trans*.02);c.shiftBoostTimer=.48;c.speed*=Math.max(.90,.845+c.profile.trans*.014);c.rpm=Math.max(late?2600:1900,c.rpm*(late?.50:.61));
       haptic('warning');showAction((late?'ПОЗДНИЙ':'РАННИЙ')+' SHIFT · ПРОВАЛ ТЯГИ');showShiftText((late?'ПОЗДНО':'РАНО')+' · ПОТЕРЯ УСКОРЕНИЯ',false);
@@ -3029,7 +3062,7 @@ async function claimPvpResults(){
     if(c?.zeroTo100&&(!state.stats.best0100||c.zeroTo100<state.stats.best0100))state.stats.best0100=Number(c.zeroTo100.toFixed(3));
     v8FinishRace(won,c);
     const result=document.querySelector('#race-content .result-box');
-    if(result&&c){const line=document.createElement('div');line.className='race-result-telemetry';line.innerHTML='<span>0–100 <b>'+(c.zeroTo100?c.zeroTo100.toFixed(2)+' s':'—')+'</b></span><span>Обгоны <b>'+(c.overtakes||0)+'</b></span><span>MAX <b>'+Math.round(c.topSpeed||0)+' км/ч</b></span>';result.appendChild(line);}
+    if(result&&c){const line=document.createElement('div');line.className='race-result-telemetry';line.innerHTML='<span>0–100 <b>'+(c.zeroTo100?c.zeroTo100.toFixed(2)+' с':'0')+'</b></span><span>Обгоны <b>'+(c.overtakes||0)+'</b></span><span>МАКС. <b>'+Math.round(c.topSpeed||0)+' км/ч</b></span>';result.appendChild(line);}
   };
 
   /* ---------- SERVER-SYNCHRONIZED CASES 9 ---------- */
@@ -3041,7 +3074,7 @@ async function claimPvpResults(){
     const p=plainObject(raw)?raw:{};const rarity=['common','rare','epic','legendary','mythic'].includes(p.rarity)?p.rarity:'common',type=['coins','tuning','plate','car'].includes(p.type)?p.type:'coins';
     const out={type,rarity,label:safeText(p.label,'Награда',80)};
     if(type==='coins')out.amount=intNumber(p.amount,1,1,5_000_000);
-    if(type==='tuning'){out.part=['engine','turbo','gearbox','tires'].includes(p.part)?p.part:'engine';out.label=({engine:'Двигатель',turbo:'Турбо',gearbox:'КПП',tires:'Шины'}[out.part]||'Тюнинг')+' · +1 STAGE';}
+    if(type==='tuning'){out.part=['engine','turbo','gearbox','tires'].includes(p.part)?p.part:'engine';out.label=({engine:'Двигатель',turbo:'Турбо',gearbox:'КПП',tires:'Шины'}[out.part]||'Тюнинг')+' · +1 УР.';}
     if(type==='car'){out.carId=intNumber(p.carId,0,1,100000);const car=carsDB.find(c=>c.id===out.carId);if(car)out.label=car.name;}
     if(type==='plate')out.plate={uid:safeText(p.plate?.uid,'plate_'+Date.now(),64),text:safeText(p.plate?.text,'X777XX',18),rarity,series:safeText(p.plate?.series,'CASE',24),value:intNumber(p.plate?.value,1000,0,2_000_000),limited:p.plate?.limited===true,createdAt:Date.now()};
     return out;
@@ -3049,7 +3082,7 @@ async function claimPvpResults(){
   function visualRarity(cs){let r=rand()*100,sum=0;for(const [rar,w] of cs.weights){sum+=w;if(r<=sum)return rar;}return cs.weights[0][0];}
   function visualPrize(cs){
     const rarity=visualRarity(cs),t=rand();if(t<.46)return {type:'coins',rarity,label:fmt(Math.round(cs.price*(.4+rand()*2.1)))+' SYND'};
-    if(t<.72)return {type:'tuning',rarity,label:['Двигатель','Турбо','КПП','Шины'][Math.floor(rand()*4)]+' · +1 STAGE'};
+    if(t<.72)return {type:'tuning',rarity,label:['Двигатель','Турбо','КПП','Шины'][Math.floor(rand()*4)]+' · +1 УР.'};
     if(t<.94)return {type:'plate',rarity,label:['A111AA','X777XX','M505MM','K009KK'][Math.floor(rand()*4)]};
     return {type:'car',rarity:rarity==='common'?'rare':rarity,label:'RARE VEHICLE'};
   }
@@ -3154,7 +3187,7 @@ async function claimPvpResults(){
   };
   openPublicProfile=function(name,val,wins,races,cars,profile){
     const root=document.getElementById('public-profile-root');if(!root)return;const p=profile||{},wr=races?Math.round(wins/races*100):0,list=Array.isArray(cars)?cars:[].concat(cars||[]).filter(Boolean),ownedHtml=list.length?list.map(x=>'<span class="player-lb-car">'+escapeHtml(x)+'</span>').join(''):'<span class="muted-v9">Нет данных</span>',balance=Number(p.balance??val)||0,level=Number(p.level)||1,best=Number(p.best_0_100)||0,rating=Number(p.rating)||0,current=safeText(p.current_car_name,'',60)||carsDB.find(c=>String(c.id)===String(p.active_car_id))?.name||'Не указана',username=safeText(p.telegram_username,'',32),isSelf=p.id===state.playerId;
-    root.innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closePublicProfile()"><div class="public-profile public-profile-v9"><div class="pp-head"><div class="public-avatar">'+(p.photo_url?'<img src="'+escapeAttrLocal(p.photo_url)+'" alt="">':escapeHtml((name||'Г').charAt(0).toUpperCase()))+'</div><div><div class="pp-name-v9">'+escapeHtml(name)+'</div><div class="pp-meta-v9">RATING '+rating+(username?' · @'+escapeHtml(username):'')+'</div></div></div><div class="pp-grid pp-grid-v9"><div class="pp-stat"><span>Победы</span><b>'+wins+'</b></div><div class="pp-stat"><span>Заезды</span><b>'+races+'</b></div><div class="pp-stat"><span>Win rate</span><b>'+wr+'%</b></div><div class="pp-stat"><span>Лучший 0–100</span><b>'+(best?best.toFixed(2)+' s':'—')+'</b></div><div class="pp-stat"><span>Текущая машина</span><b>'+escapeHtml(current)+'</b></div><div class="pp-stat"><span>Уровень</span><b>'+level+'</b></div></div><div class="pp-stat pp-garage-v9"><span>Гараж</span><div class="player-lb-cars">'+ownedHtml+'</div></div>'+(!isSelf&&p.id?'<button class="btn btn-select" onclick="sendFriendRequestTo('+jsArg(p.id)+')">ДОБАВИТЬ В ДРУЗЬЯ</button>':'')+'<button class="btn btn-ghost" onclick="closePublicProfile()">ЗАКРЫТЬ</button></div></div>';
+    root.innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closePublicProfile()"><div class="public-profile public-profile-v9"><div class="pp-head"><div class="public-avatar">'+(p.photo_url?'<img src="'+escapeAttrLocal(p.photo_url)+'" alt="">':escapeHtml((name||'Г').charAt(0).toUpperCase()))+'</div><div><div class="pp-name-v9">'+escapeHtml(name)+'</div><div class="pp-meta-v9">РЕЙТИНГ '+rating+(username?' · @'+escapeHtml(username):'')+'</div></div></div><div class="pp-grid pp-grid-v9"><div class="pp-stat"><span>Победы</span><b>'+wins+'</b></div><div class="pp-stat"><span>Заезды</span><b>'+races+'</b></div><div class="pp-stat"><span>Процент побед</span><b>'+wr+'%</b></div><div class="pp-stat"><span>Лучший 0–100</span><b>'+(best?best.toFixed(2)+' с':'0')+'</b></div><div class="pp-stat"><span>Текущая машина</span><b>'+escapeHtml(current)+'</b></div><div class="pp-stat"><span>Уровень</span><b>'+level+'</b></div></div><div class="pp-stat pp-garage-v9"><span>Гараж</span><div class="player-lb-cars">'+ownedHtml+'</div></div>'+(!isSelf&&p.id?'<button class="btn btn-select" onclick="sendFriendRequestTo('+jsArg(p.id)+')">ДОБАВИТЬ В ДРУЗЬЯ</button>':'')+'<button class="btn btn-ghost" onclick="closePublicProfile()">ЗАКРЫТЬ</button></div></div>';
   };
   openPublicProfileData=function(p){const owned=Array.isArray(p.owned_cars)?p.owned_cars:[],cars=owned.map(id=>carsDB.find(c=>String(c.id)===String(id))).filter(Boolean);openPublicProfile(p.name,p.total_earned||0,p.wins||0,p.races||0,cars.map(c=>c.name),p);};
 
@@ -3197,7 +3230,7 @@ async function claimPvpResults(){
     const root=document.getElementById('friends-content-v9');if(!root)return;root.innerHTML='<div class="empty-note">Загрузка...</div>';
     try{const payload=await socialApi('/api/social/friends','GET',null,'Друзья');const rows=Array.isArray(payload?.data)?payload.data:[],incoming=rows.filter(x=>x.status==='pending'&&x.recipient_id===state.playerId),accepted=rows.filter(x=>x.status==='accepted'),outgoing=rows.filter(x=>x.status==='pending'&&x.requester_id===state.playerId);root.innerHTML='<div class="v9-section-head"><b>ДРУЗЬЯ</b><span>'+accepted.length+'</span></div>'+friendRows(accepted,'accepted')+'<div class="v9-section-head"><b>ВХОДЯЩИЕ</b><span>'+incoming.length+'</span></div>'+friendRows(incoming,'incoming')+'<div class="v9-section-head"><b>ИСХОДЯЩИЕ</b><span>'+outgoing.length+'</span></div>'+friendRows(outgoing,'outgoing');}catch(e){console.warn('friends unavailable',e);root.innerHTML='<div class="empty-note">Друзья сейчас недоступны. Попробуйте ещё раз позже.</div>';}
   }
-  function friendRows(rows,mode){if(!rows.length)return'<div class="empty-note compact-v9">Нет записей</div>';return rows.map(r=>{const fallback=r.requester_id===state.playerId?{id:r.recipient_id,name:r.recipient_name}:{id:r.requester_id,name:r.requester_name};const p=r.other_profile||fallback,username=p?.telegram_username?'@'+p.telegram_username:'',meta=[p?.id||fallback.id,username,p?.current_car_name||'',p?.rating?('RATING '+p.rating):''].filter(Boolean).join(' · '),online=r.other_online===true;return '<div class="social-row-v9"><div class="friend-main-v12"><b><i class="friend-online-v12 '+(online?'on':'')+'"></i>'+escapeHtml(p?.name||fallback.name||fallback.id)+'</b><span>'+escapeHtml(meta)+'</span></div><div class="social-actions-v9">'+(mode==='accepted'?'<button class="btn btn-ghost" onclick="openPublicProfileByName('+jsArg(p?.id||fallback.id)+')">ПРОФИЛЬ</button>':'')+(mode==='incoming'?'<button class="btn btn-select" onclick="acceptFriendRequest('+r.id+')">ПРИНЯТЬ</button>':'')+(mode!=='outgoing'?'<button class="btn btn-ghost" onclick="removeFriend('+r.id+')">'+(mode==='accepted'?'УДАЛИТЬ':'ОТКЛОНИТЬ')+'</button>':'<span class="pending-v9">ОЖИДАНИЕ</span>')+'</div></div>';}).join('');}
+  function friendRows(rows,mode){if(!rows.length)return'<div class="empty-note compact-v9">Нет записей</div>';return rows.map(r=>{const fallback=r.requester_id===state.playerId?{id:r.recipient_id,name:r.recipient_name}:{id:r.requester_id,name:r.requester_name};const p=r.other_profile||fallback,username=p?.telegram_username?'@'+p.telegram_username:'',meta=[p?.id||fallback.id,username,p?.current_car_name||'',p?.rating?('РЕЙТИНГ '+p.rating):''].filter(Boolean).join(' · '),online=r.other_online===true;return '<div class="social-row-v9"><div class="friend-main-v12"><b><i class="friend-online-v12 '+(online?'on':'')+'"></i>'+escapeHtml(p?.name||fallback.name||fallback.id)+'</b><span>'+escapeHtml(meta)+'</span></div><div class="social-actions-v9">'+(mode==='accepted'?'<button class="btn btn-ghost" onclick="openPublicProfileByName('+jsArg(p?.id||fallback.id)+')">ПРОФИЛЬ</button>':'')+(mode==='incoming'?'<button class="btn btn-select" onclick="acceptFriendRequest('+r.id+')">ПРИНЯТЬ</button>':'')+(mode!=='outgoing'?'<button class="btn btn-ghost" onclick="removeFriend('+r.id+')">'+(mode==='accepted'?'УДАЛИТЬ':'ОТКЛОНИТЬ')+'</button>':'<span class="pending-v9">ОЖИДАНИЕ</span>')+'</div></div>';}).join('');}
 
   let clanLeaderboardCache=[];
   const relationOne=(value)=>Array.isArray(value)?(value[0]||{}):(value||{});
@@ -3214,7 +3247,7 @@ async function claimPvpResults(){
       const payload=await socialApi('/api/social/clans','GET',null,'Кланы'),membership=payload?.membership||null,invites=Array.isArray(payload?.invites)?payload.invites:[],members=Array.isArray(payload?.members)?payload.members:[],lb=payload?.clanRank||null;clanLeaderboardCache=Array.isArray(payload?.leaderboard)?payload.leaderboard:[];
       if(!membership){root.innerHTML='<div class="clan-create-v9"><b>СОЗДАТЬ КЛАН</b><span>Название уникальное. После создания ты становишься лидером.</span><input id="clan-name-v9" maxlength="24" placeholder="Название клана"><button class="btn btn-select" onclick="createClanV9()">СОЗДАТЬ</button></div>'+renderClanInvites(invites);currentClanDivision='Мантика';loadClanLeaderboardV9();return;}
       const clan=relationOne(membership.clans);currentClanDivision=lb?.division||'Мантика';const isOwner=membership.role==='owner';
-      root.innerHTML='<div class="clan-hero-v9"><div><span>КЛАН</span><b>'+escapeHtml(clan.name||'Клан')+'</b><small>'+escapeHtml(currentClanDivision)+' · '+fmt(lb?.score||0)+' pts · #'+(lb?.global_rank||'—')+'</small></div><button class="btn btn-ghost" onclick="leaveClanV9()">ВЫЙТИ</button></div>'+(isOwner?'<div class="social-search-v9"><input id="clan-invite-v9" maxlength="90" placeholder="ID или @login друга"><button class="btn btn-select" onclick="inviteClanV9()">ПРИГЛАСИТЬ</button></div>':'')+'<div class="v9-section-head"><b>СОСТАВ</b><span>'+members.length+'</span></div>'+members.map(m=>{const profile=relationOne(m.player_profiles);return '<div class="clan-member-v9"><div><b>'+escapeHtml(m.player_name)+'</b><span>'+escapeHtml(String(m.role||'member').toUpperCase())+' · RATING '+(profile?.rating||0)+' · '+escapeHtml(profile?.current_car_name||'машина не указана')+'</span></div>'+(isOwner&&m.role!=='owner'?'<button class="btn btn-ghost" onclick="kickClanMemberV9('+jsArg(m.member_uid)+')">ИСКЛЮЧИТЬ</button>':'')+'</div>';}).join('')+renderClanInvites(invites);loadClanLeaderboardV9();
+      root.innerHTML='<div class="clan-hero-v9"><div><span>КЛАН</span><b>'+escapeHtml(clan.name||'Клан')+'</b><small>'+escapeHtml(currentClanDivision)+' · '+fmt(lb?.score||0)+' очк. · #'+(lb?.global_rank||'—')+'</small></div><button class="btn btn-ghost" onclick="leaveClanV9()">ВЫЙТИ</button></div>'+(isOwner?'<div class="social-search-v9"><input id="clan-invite-v9" maxlength="90" placeholder="ID или @login друга"><button class="btn btn-select" onclick="inviteClanV9()">ПРИГЛАСИТЬ</button></div>':'')+'<div class="v9-section-head"><b>СОСТАВ</b><span>'+members.length+'</span></div>'+members.map(m=>{const profile=relationOne(m.player_profiles);return '<div class="clan-member-v9"><div><b>'+escapeHtml(m.player_name)+'</b><span>'+escapeHtml(({owner:'ВЛАДЕЛЕЦ',officer:'ОФИЦЕР',member:'УЧАСТНИК'}[String(m.role||'member')]||'УЧАСТНИК'))+' · РЕЙТИНГ '+(profile?.rating||0)+' · '+escapeHtml(profile?.current_car_name||'машина не указана')+'</span></div>'+(isOwner&&m.role!=='owner'?'<button class="btn btn-ghost" onclick="kickClanMemberV9('+jsArg(m.member_uid)+')">ИСКЛЮЧИТЬ</button>':'')+'</div>';}).join('')+renderClanInvites(invites);loadClanLeaderboardV9();
     }catch(e){console.warn('clan unavailable',e);root.innerHTML='<div class="empty-note">Клановый раздел сейчас недоступен.</div>';}
   }
   function renderClanInvites(invites){if(!invites.length)return'';return '<div class="v9-section-head"><b>ПРИГЛАШЕНИЯ</b><span>'+invites.length+'</span></div>'+invites.map(i=>{const clan=relationOne(i.clans);return '<div class="social-row-v9"><div><b>'+escapeHtml(clan?.name||'Клан')+'</b><span>Пригласил: '+escapeHtml(i.inviter_name||'Игрок')+'</span></div><button class="btn btn-select" onclick="acceptClanInviteV9('+i.id+')">ВСТУПИТЬ</button></div>';}).join('');}
@@ -3238,7 +3271,7 @@ async function claimPvpResults(){
   const v8RenderProfile=renderProfile;
   renderProfile=function(){
     v8RenderProfile();ensureV9Screens();const grid=document.querySelector('#screen-profile .hub-grid');if(grid&&!document.getElementById('hub-friends-v9')){const a=document.createElement('div');a.className='hub-card';a.id='hub-friends-v9';a.onclick=()=>switchTab('friends');a.innerHTML='<div class="ic">'+svgIcon('users')+'</div><div class="lbl">Друзья</div><div class="sub">Поиск и заявки</div>';grid.appendChild(a);const b=document.createElement('div');b.className='hub-card';b.id='hub-clans-v9';b.onclick=()=>switchTab('clans');b.innerHTML='<div class="ic">'+svgIcon('shield')+'</div><div class="lbl">Кланы</div><div class="sub">Состав и рейтинг</div>';grid.appendChild(b);}
-    const hero=document.querySelector('#screen-profile .profile-hero');if(hero&&!document.getElementById('profile-race-stats-v9')){const car=activeCar(),box=document.createElement('div');box.id='profile-race-stats-v9';box.className='profile-race-stats-v9';box.innerHTML='<span>RATING <b>'+playerRating()+'</b></span><span>0–100 <b>'+(state.stats.best0100?state.stats.best0100.toFixed(2)+' s':'—')+'</b></span><span>МАШИНА <b>'+escapeHtml(car?.name||'—')+'</b></span>';hero.appendChild(box);}
+    const hero=document.querySelector('#screen-profile .profile-hero');if(hero&&!document.getElementById('profile-race-stats-v9')){const car=activeCar(),box=document.createElement('div');box.id='profile-race-stats-v9';box.className='profile-race-stats-v9';box.innerHTML='<span>РЕЙТИНГ <b>'+playerRating()+'</b></span><span>0–100 <b>'+(state.stats.best0100?state.stats.best0100.toFixed(2)+' с':'0')+'</b></span><span>МАШИНА <b>'+escapeHtml(car?.name||'Не выбрана')+'</b></span>';hero.appendChild(box);}
     document.getElementById('server-sync-v12')?.remove();
   };
 
@@ -3487,13 +3520,28 @@ if (typeof window !== 'undefined') {
     bootstrap.opponents.forEach((o:any)=>{
       const normalized={
         id:o.id,name:String(o.name||'Соперник'),power:Number(o.power)||200,reward:Number(o.reward)||0,unlockLevel:Number(o.unlockLevel)||1,
-        car:String(o.car||'Street build'),rating:Number(o.rating)||50,style:String(o.style||'Сбалансированный'),favoriteTracks:Array.isArray(o.favoriteTracks)?o.favoriteTracks:['Промзона'],
+        car:String(o.car||'Уличная сборка'),rating:Number(o.rating)||50,style:String(o.style||'Сбалансированный'),favoriteTracks:Array.isArray(o.favoriteTracks)?o.favoriteTracks:['Промзона'],
         wins:Number(o.wins)||0,losses:Number(o.losses)||0,avatar:String(o.avatar||'AI'),taunt:String(o.taunt||''),preLines:Array.isArray(o.preLines)?o.preLines:[],
         winLine:String(o.winLine||''),loseLine:String(o.loseLine||''),boss:o.boss===true
       };
       merged.set(String(o.id),{...(merged.get(String(o.id))||{}),...normalized});
     });
     opponentsDB.splice(0,opponentsDB.length,...Array.from(merged.values()));
+  }
+
+  function rivalMetaV11(opp:any){
+    const rec=state.rivalRecords?.[String(opp?.id)]||{wins:0,losses:0};
+    const name=String(opp?.name||'Соперник');
+    return {
+      avatar:String(opp?.avatar||name.slice(0,2).toUpperCase()),
+      style:String(opp?.style||'Сбалансированный'),
+      favoriteTracks:Array.isArray(opp?.favoriteTracks)&&opp.favoriteTracks.length?opp.favoriteTracks:['Промзона'],
+      wins:Number(opp?.wins)||0,
+      losses:Number(opp?.losses)||0,
+      car:String(opp?.car||'Уличная сборка'),
+      rating:Number(opp?.rating)||Math.min(99,Math.round(50+(Number(opp?.power)||200)/18)),
+      record:rec
+    };
   }
 
   let duelFilter='all';
@@ -3535,18 +3583,18 @@ if (typeof window !== 'undefined') {
         return Math.abs(Number(a.power)-myPower)-Math.abs(Number(b.power)-myPower);
       });
     }
-    const visible=state.duelSub==='tour'?pool.slice(0,3):pool.slice(0,16);
+    const visible=state.duelSub==='tour'?pool.slice(0,3):pool.slice(0,24);
     if(summary){
       summary.innerHTML='<div class="summary-main"><div class="summary-car">'+escapeHtml(String(car.name).split(/\s+/).slice(0,2).map((x:any)=>x[0]).join('').slice(0,3))+'</div><div><b>'+escapeHtml(car.name)+'</b><span>Текущая сборка · '+escapeHtml(car.tier)+'</span></div></div><strong>'+fmt(myPower)+'<small>л.с.</small></strong>';
     }
     const onlineLabel=document.getElementById('duel-online-label');if(onlineLabel)onlineLabel.textContent=pool.length+' соперников в сетке';
     if(!visible.length){root.innerHTML='<div class="empty-note">Под этот фильтр соперников нет. Попробуйте другой диапазон.</div>';return;}
     root.innerHTML=visible.map((opp:any,idx:number)=>{
-      const m=rivalMeta(opp),delta=(Number(opp.power)-myPower)/Math.max(myPower,1),winChance=Math.max(4,Math.min(96,Math.round(50-delta*82))),fee=entryFeeFor(opp),recent=history.includes(String(opp.id));
+      const m=rivalMetaV11(opp),delta=(Number(opp.power)-myPower)/Math.max(myPower,1),winChance=Math.max(4,Math.min(96,Math.round(50-delta*82))),fee=entryFeeFor(opp),recent=history.includes(String(opp.id));
       const r=state.tournamentRuns[String(opp.id)]||{},day=new Date().toISOString().slice(0,10),count=state.duelSub==='tour'&&r.day===day?(Number(r.count)||0):0,mult=state.duelSub==='tour'?([1,.72,.48][Math.min(2,count)]||.48):1,reward=Math.round(Number(opp.reward||0)*mult);
       const cls=opp.boss?'boss extreme':delta>.28?'extreme':delta>.08?'risk':delta<-.15?'easy':'even';
-      const label=opp.boss?'BOSS':delta>.28?'EXTREME':delta>.08?'RISK':delta<-.15?'FAVORABLE':'EVEN';
-      return '<article class="duel-card-v11 '+cls+'" style="animation-delay:'+Math.min(idx*28,240)+'ms"><div class="duel-card-main"><div class="duel-card-top"><div class="duel-avatar-v11">'+escapeHtml(m.avatar)+'</div><div class="duel-card-id"><b>'+escapeHtml(opp.name)+'</b><span>'+escapeHtml(m.car)+' · '+escapeHtml(m.style)+'</span></div><div class="duel-card-rating"><b>'+m.rating+'</b><small>RATING</small></div></div><div class="duel-difficulty"><span class="'+(cls.includes('extreme')?'extreme':cls.includes('risk')?'risk':'')+'">'+label+'</span><small>'+(Number(opp.power)>=myPower?'+':'')+Math.round(Number(opp.power)-myPower)+' л.с. к вашей сборке</small></div><div class="duel-quote-v11">“'+escapeHtml(opp.taunt||pick(opp.preLines||['Встретимся на финише.']))+'”</div><div class="duel-tags-v11"><span>Стиль <b>'+escapeHtml(m.style)+'</b></span><span>Трасса <b>'+escapeHtml(m.favoriteTracks[0]||'Промзона')+'</b></span><span>Карьера <b>'+m.wins+'–'+m.losses+'</b></span><span>С вами <b>'+m.record.wins+'–'+m.record.losses+'</b></span></div><div class="duel-match-v11"><div class="duel-match-head"><span>Матчап</span><b>'+winChance+'% шанс</b></div><div class="duel-match-bar"><i style="width:'+winChance+'%"></i></div></div></div><aside class="duel-card-side"><div><div class="duel-power-v11"><span>Мощность</span><b>'+fmt(opp.power)+'</b><small>л.с.</small></div><div class="duel-money-v11"><div><span>Вход</span><b>'+fmt(fee)+'</b></div><div><span>Приз</span><b>'+fmt(reward)+'</b></div></div></div><div><button class="duel-enter-v11" onclick="prepareRace(\''+String(opp.id).replace(/'/g,"\\'")+'\',\''+(state.duelSub==='tour'?'tour':'normal')+'\')">НА ЛИНИЮ</button>'+(recent?'<div class="duel-recent-v11">Недавняя встреча</div>':'')+'</div></aside></article>';
+      const label=opp.boss?'БОСС':delta>.28?'ПРЕДЕЛ':delta>.08?'РИСК':delta<-.15?'ПРЕИМУЩЕСТВО':'РАВНО';
+      return '<article class="duel-card-v11 '+cls+'" style="animation-delay:'+Math.min(idx*28,240)+'ms"><div class="duel-card-main"><div class="duel-card-top"><div class="duel-avatar-v11">'+escapeHtml(m.avatar)+'</div><div class="duel-card-id"><b>'+escapeHtml(opp.name)+'</b><span>'+escapeHtml(m.car)+' · '+escapeHtml(m.style)+'</span></div><div class="duel-card-rating"><b>'+m.rating+'</b><small>РЕЙТИНГ</small></div></div><div class="duel-difficulty"><span class="'+(cls.includes('extreme')?'extreme':cls.includes('risk')?'risk':'')+'">'+label+'</span><small>'+(Number(opp.power)>=myPower?'+':'')+Math.round(Number(opp.power)-myPower)+' л.с. к вашей сборке</small></div><div class="duel-quote-v11">“'+escapeHtml(opp.taunt||pick(opp.preLines||['Встретимся на финише.']))+'”</div><div class="duel-tags-v11"><span>Стиль <b>'+escapeHtml(m.style)+'</b></span><span>Трасса <b>'+escapeHtml(m.favoriteTracks[0]||'Промзона')+'</b></span><span>Карьера <b>'+m.wins+'–'+m.losses+'</b></span><span>С вами <b>'+m.record.wins+'–'+m.record.losses+'</b></span></div><div class="duel-match-v11"><div class="duel-match-head"><span>Расклад</span><b>'+winChance+'% шанс</b></div><div class="duel-match-bar"><i style="width:'+winChance+'%"></i></div></div></div><aside class="duel-card-side"><div><div class="duel-power-v11"><span>Мощность</span><b>'+fmt(opp.power)+'</b><small>л.с.</small></div><div class="duel-money-v11"><div><span>Вход</span><b>'+fmt(fee)+'</b></div><div><span>Приз</span><b>'+fmt(reward)+'</b></div></div></div><div><button class="duel-enter-v11" onclick="prepareRace(\''+String(opp.id).replace(/'/g,"\\'")+'\',\''+(state.duelSub==='tour'?'tour':'normal')+'\')">НА ЛИНИЮ</button>'+(recent?'<div class="duel-recent-v11">Недавняя встреча</div>':'')+'</div></aside></article>';
     }).join('');
   };
 
@@ -3571,7 +3619,7 @@ if (typeof window !== 'undefined') {
       const otherProfile=(payload.profiles||[]).find((p:any)=>p.id===room['player_'+otherSide+'_id'])||{};
       const otherCar=(payload.selectedCars||[]).find((c:any)=>Number(c.id)===otherCarId)||{};
       const tempId='private_'+String(room.public_code);
-      const temp={id:tempId,name:String(otherProfile.name||room['player_'+otherSide+'_name']||'Игрок'),power:Number(otherCar.power)||getEffectivePower(carsDB.find((c:any)=>c.id===myCarId)),reward:0,unlockLevel:1,car:String(otherCar.name||'Private build'),rating:Number(otherProfile.rating)||0,style:'Live duel',favoriteTracks:['Private room'],wins:0,losses:0,avatar:String(otherProfile.name||'P').slice(0,2).toUpperCase(),taunt:'Дуэль из Telegram-чата.',preLines:['Комната закрыта. На линии только вы двое.']};
+      const temp={id:tempId,name:String(otherProfile.name||room['player_'+otherSide+'_name']||'Игрок'),power:Number(otherCar.power)||getEffectivePower(carsDB.find((c:any)=>c.id===myCarId)),reward:0,unlockLevel:1,car:String(otherCar.name||'Private build'),rating:Number(otherProfile.rating)||0,style:'Онлайн-дуэль',favoriteTracks:['Закрытая комната'],wins:0,losses:0,avatar:String(otherProfile.name||'P').slice(0,2).toUpperCase(),taunt:'Дуэль из Telegram-чата.',preLines:['Комната закрыта. На линии только вы двое.']};
       const existing=opponentsDB.findIndex((o:any)=>String(o.id)===tempId);if(existing>=0)opponentsDB[existing]=temp;else opponentsDB.push(temp);
       prepareRace(tempId,'normal');
       if(raceCtx){raceCtx.privateDuelCode=String(room.public_code);raceCtx.fee=0;raceCtx.fuelCost=0;raceCtx.opp.reward=0;raceCtx.mode='private';renderRaceBrief();}

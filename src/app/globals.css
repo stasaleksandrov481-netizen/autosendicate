@@ -572,7 +572,7 @@ main::-webkit-scrollbar{width:4px} main::-webkit-scrollbar-thumb{background:#454
 
 /* Profile/hub becomes an actual dashboard rather than a wall of panels. */
 .profile-hero{padding:17px;border-radius:8px!important;position:relative;overflow:hidden}
-.profile-hero::after{content:"CREW // DRIVER";position:absolute;right:-7px;top:13px;transform:rotate(90deg);font-size:8px;letter-spacing:1.7px;color:#555b4e}
+.profile-hero::after{content:"ЭКИПАЖ // ГОНЩИК";position:absolute;right:-7px;top:13px;transform:rotate(90deg);font-size:8px;letter-spacing:1.7px;color:#555b4e}
 .avatar-circle{border-radius:7px!important;background:#171a15!important;border:1px solid #4b513f!important;clip-path:polygon(8px 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%,0 8px)}
 .stats-grid{gap:6px}.stat-tile{border-radius:5px!important;background:#10120f!important;border-color:#2f342b!important;position:relative;overflow:hidden}.stat-tile::before{content:"";position:absolute;left:0;top:0;bottom:0;width:2px;background:#4b503f}.stat-tile .val{font-variant-numeric:tabular-nums}
 .hub-grid{gap:7px}.hub-card{border-radius:6px!important;background:linear-gradient(145deg,#171a15,#0e100d)!important;border-color:#31362c!important;min-height:86px;position:relative;overflow:hidden}.hub-card::after{content:"";position:absolute;right:-17px;bottom:-26px;width:58px;height:58px;border:1px solid #2f342a;transform:rotate(45deg)}.hub-card .ic{filter:saturate(.5)}.hub-card .lbl{letter-spacing:.35px}
@@ -911,7 +911,7 @@ main#main-scroll{padding:10px 9px calc(77px + var(--safe-bottom))!important;scro
     linear-gradient(145deg,#151914,#0a0d0a)!important;
   overflow:hidden;
 }
-.profile-hero::after{content:"CARBON // DRIVER"!important;right:-14px!important;top:34px!important;color:#4f574b!important;font-size:6px!important;letter-spacing:2px!important}
+.profile-hero::after{content:"КАРБОН // ГОНЩИК"!important;right:-14px!important;top:34px!important;color:#4f574b!important;font-size:6px!important;letter-spacing:2px!important}
 .profile-avatar-block{display:flex;flex-direction:column;align-items:center;gap:4px}.profile-avatar-block>span{font-size:6px;letter-spacing:1.6px;color:#6f776b;font-weight:900}
 .avatar-circle{width:58px!important;height:58px!important;margin:0!important;font-size:22px!important}
 .profile-identity{min-width:0}.profile-kicker{font-size:6.5px;color:var(--as-gold);letter-spacing:1.7px;font-weight:900;margin-bottom:3px}.profile-name{font-size:19px!important;line-height:1.05;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.profile-rep{font-size:8.5px!important;margin-top:5px!important;color:#969d90!important;letter-spacing:.45px}
@@ -1001,4 +1001,120 @@ nav{
   .stats-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}
   .duel-v11-heading{align-items:flex-start!important}.duel-card-v11{grid-template-columns:1fr!important}.duel-card-side{border-left:0!important;border-top:1px solid #252c26!important;padding:7px 0 0!important;display:grid!important;grid-template-columns:1fr auto!important;align-items:end!important}.duel-money-v11{display:flex!important}.duel-enter-v11{min-width:94px!important}
   #casino-hub-list{grid-template-columns:1fr!important}
+}
+
+/* ===== v12.4 RU / Duel + Casino polish ===== */
+:root{
+  --nav-safe-offset:calc(62px + env(safe-area-inset-bottom,0px));
+}
+
+/* Single compact notification: never covers the header or action area. */
+.toast.toast-compact{
+  position:fixed!important;
+  top:auto!important;
+  left:50%!important;
+  bottom:calc(var(--nav-safe-offset) + 10px)!important;
+  transform:translate(-50%,12px)!important;
+  width:auto!important;
+  max-width:min(390px,calc(100vw - 24px))!important;
+  min-width:0!important;
+  padding:8px 11px!important;
+  border:1px solid rgba(214,177,54,.34)!important;
+  border-radius:6px!important;
+  background:rgba(12,15,12,.96)!important;
+  color:#f5f1df!important;
+  font-size:10px!important;
+  line-height:1.35!important;
+  font-weight:800!important;
+  letter-spacing:.01em!important;
+  text-align:left!important;
+  box-shadow:0 8px 28px rgba(0,0,0,.42)!important;
+  pointer-events:none!important;
+  opacity:0!important;
+  visibility:hidden!important;
+  clip-path:none!important;
+  z-index:980!important;
+  transition:opacity .18s ease,transform .18s ease,visibility .18s ease!important;
+}
+.toast.toast-compact.show{opacity:1!important;visibility:visible!important;transform:translate(-50%,0)!important}
+.toast.toast-compact.hide{opacity:0!important;visibility:hidden!important;transform:translate(-50%,8px)!important}
+
+/* Duel network: dense, readable and visibly populated on mobile. */
+.duel-v11-list{display:grid!important;grid-template-columns:1fr!important;gap:7px!important;width:100%!important}
+.duel-card-v11{min-height:0!important;border-radius:5px!important;overflow:hidden!important}
+.duel-card-v11 .duel-card-main{padding:10px!important}
+.duel-card-v11 .duel-card-side{padding:9px 10px!important}
+.duel-v11-heading h2{font-size:22px!important;line-height:.95!important}
+.duel-v11-heading p{max-width:420px!important}
+.duel-v11-live b{font-size:8px!important}
+.duel-v11-live span{font-size:7px!important}
+@media (min-width:720px){.duel-v11-list{grid-template-columns:repeat(2,minmax(0,1fr))!important}}
+
+/* Casino hub */
+.casino-screen-premium{align-items:stretch!important}
+.casino-hero-premium{
+  width:100%;display:flex;align-items:flex-end;justify-content:space-between;gap:14px;
+  padding:12px 12px 11px;margin-bottom:8px;border:1px solid #30352a;border-radius:6px;
+  background:linear-gradient(120deg,rgba(25,28,22,.96),rgba(10,12,10,.98));position:relative;overflow:hidden
+}
+.casino-hero-premium:before{content:"";position:absolute;inset:0;background:linear-gradient(110deg,transparent 0 62%,rgba(210,171,42,.055) 62% 63%,transparent 63%);pointer-events:none}
+.casino-hero-premium>div:first-child{position:relative;z-index:1}
+.casino-hero-premium span{font-size:7px;font-weight:900;letter-spacing:.22em;color:#d2ad39}
+.casino-hero-premium h2{font-size:20px;line-height:1;margin:4px 0 5px;text-transform:uppercase;font-style:italic;letter-spacing:-.02em}
+.casino-hero-premium p{margin:0;max-width:330px;font-size:8px;line-height:1.4;color:#848a7c;font-weight:700}
+.casino-live-dot{position:relative;z-index:1;display:flex;align-items:center;gap:5px;padding:5px 7px;border:1px solid #39402f;border-radius:4px;background:#0b0e0b;font-size:7px;font-weight:900;color:#a5ad98;white-space:nowrap}
+.casino-live-dot i{width:5px;height:5px;border-radius:50%;background:#d3ad35;box-shadow:0 0 8px rgba(211,173,53,.4)}
+.casino-session-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;width:100%;margin-bottom:8px}
+.casino-session-stats>div{padding:7px 8px;border:1px solid #282d24;border-radius:5px;background:#0c0f0c;min-width:0}
+.casino-session-stats span{display:block;font-size:6px;text-transform:uppercase;letter-spacing:.12em;color:#72796c;font-weight:900;margin-bottom:3px}
+.casino-session-stats b{display:block;font-size:9px;color:#e9e6dc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.casino-session-stats b.positive{color:#d6b039}
+#casino-hub-list{grid-template-columns:1fr!important;gap:6px!important;max-width:none!important;width:100%!important}
+.casino-card-premium{
+  appearance:none;width:100%;min-height:58px!important;margin:0!important;padding:8px 9px!important;
+  display:grid!important;grid-template-columns:24px 32px minmax(0,1fr) 18px;align-items:center;gap:8px!important;
+  text-align:left;border:1px solid #292e25!important;border-radius:5px!important;
+  background:linear-gradient(100deg,#10130f,#0b0e0b)!important;color:inherit;position:relative;overflow:hidden
+}
+.casino-card-premium:before{content:"";position:absolute;left:0;top:0;bottom:0;width:2px;background:#555f49;opacity:.5}
+.casino-card-premium.featured:before{background:#d1aa31;opacity:1}
+.casino-card-premium:active{transform:scale(.992)!important;background:#151912!important}
+.casino-card-index{font-size:7px;font-weight:900;letter-spacing:.08em;color:#5c6257;text-align:center}
+.casino-card-premium .casino-ic{width:28px!important;height:28px!important;padding:5px;border:1px solid #31372c;border-radius:4px;color:#c4a33a!important;background:#0a0c09}
+.casino-card-premium .casino-info b{font-size:10px!important;text-transform:uppercase;letter-spacing:.02em;margin-bottom:2px}
+.casino-card-premium .casino-info span{font-size:7px!important;color:#727a6d!important;line-height:1.3!important}
+.casino-card-arrow{font-size:22px;line-height:1;color:#656d60;text-align:center;font-weight:300}
+
+/* Individual casino games */
+.casino-game-screen{align-items:stretch!important}
+.casino-game-screen>.back-link{align-self:flex-start!important;margin-bottom:5px!important}
+.casino-game-screen>.section-title{margin-bottom:7px!important}
+.casino-game-screen .game-table{
+  width:100%!important;max-width:none!important;padding:10px!important;margin-bottom:7px!important;
+  border:1px solid #30362b!important;border-radius:6px!important;
+  background:radial-gradient(circle at 50% 0,rgba(181,145,37,.07),transparent 35%),#0c0f0c!important;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.012)!important
+}
+.casino-game-screen .bet-panel{
+  width:100%!important;max-width:none!important;margin:0!important;padding:8px!important;
+  border:1px solid #292f25!important;border-radius:6px!important;background:#0b0e0b!important
+}
+.casino-game-screen .bet-row{display:grid!important;grid-template-columns:54px minmax(80px,1fr) 54px 60px;gap:5px!important}
+.casino-game-screen .chip-btn,.casino-game-screen .bet-input{height:34px!important;border-radius:4px!important;font-size:9px!important}
+.casino-game-screen .btn-select{min-height:36px!important;border-radius:4px!important;font-size:9px!important;letter-spacing:.06em!important}
+.casino-game-screen .slots-reels{gap:5px!important;margin:4px 0 8px!important}
+.casino-game-screen .reel{height:88px!important;min-width:0!important;flex:1!important;max-width:112px!important;border:1px solid #343a30!important;background:#080a08!important}
+.casino-game-screen .slot-symbol-v9{height:86px!important}
+.casino-game-screen .roulette-grid{max-width:none!important;grid-template-columns:repeat(6,1fr)!important;gap:3px!important}
+.casino-game-screen .rlt-result-num{margin:0 auto 7px!important}
+.casino-game-screen .dice-result-num{font-size:36px!important;margin:5px 0!important}
+
+@media (max-width:360px){
+  .casino-session-stats{grid-template-columns:1fr 1fr}.casino-session-stats>div:last-child{grid-column:1/-1}
+  .casino-game-screen .bet-row{grid-template-columns:45px minmax(70px,1fr) 45px 52px}
+  .casino-hero-premium p{display:none}
+}
+
+@media (prefers-reduced-motion:reduce){
+  .toast.toast-compact,.casino-card-premium{transition:none!important}
 }
