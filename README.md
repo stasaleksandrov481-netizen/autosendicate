@@ -1,7 +1,19 @@
-# AutoSyndicate Carbon v12.3 — UI Remaster
+# AutoSyndicate Carbon v12.8 — Global Stability
 
-AutoSyndicate Carbon v12.3 is the production UI remaster of the existing Telegram Mini App. It keeps the v12.2 server/auth foundation while rebuilding the player-facing visual system into a compact Carbon District interface: graphite/carbon surfaces, restrained amber accents, denser cards, mobile-first spacing, lower-cost motion and a larger duel network.
+AutoSyndicate Carbon v12.8 is the stabilized Telegram Mini App build: unified desktop/mobile viewport behavior, per-Telegram-player local cache, consistent server starter profiles, WebP-only production cars, compact duel/race UI, repaired referral/bank bridges and Telegram group duel commands.
 
+
+## v12.8 final stability
+
+- Local cache is namespaced by verified `tg_<telegram_id>`; orphaned historical shared saves are never auto-claimed by another account.
+- Fresh server profiles are normalized to the same starter state on every device: 1,500 SYND, car #1, active car #1.
+- `/api/game/bootstrap` includes the signed-in player snapshot for clean-device reconciliation.
+- Only car IDs 1–25 are production-active; each has a real `.webp` and thumbnail.
+- Bank transfer RPC now writes both sender/receiver UIDs and claim timestamps correctly.
+- Referral start/first-race/claim rewards are recorded in the server profile as well as returned to the client.
+- Telegram reply triggers include `дуэль`, `дуель`, `поединок`, `гонка`, `заезд`; `/duel` is the Privacy-Mode-safe fallback.
+- Telegram viewport height is synchronized into CSS so desktop/mobile layouts use one geometry instead of separate accidental layouts.
+- Existing databases: run `supabase/schema_v12_8_FIX.sql`. Fresh databases: run `supabase/schema_v12_8_FULL.sql`.
 
 ## v12.3 UI remaster
 
@@ -59,17 +71,17 @@ AutoSyndicate Carbon v12.3 is the production UI remaster of the existing Telegra
 
 ## Database migration — use one file
 
-For v12.2 do **not** manually guess which historical migration your database already has. Run this single file in Supabase SQL Editor:
+For a fresh/current install, do **not** manually chain old migrations. Run this single file in Supabase SQL Editor:
 
 ```text
-supabase/schema_v12_2_FULL.sql
+supabase/schema_v12_8_FULL.sql
 ```
 
 It contains v8 → v12 in the correct order, repairs missing referral/auth/social objects, validates the final schema and is wrapped in one transaction. It is designed for both an old partially-migrated database and a fresh project.
 
 The older `schema_v8.sql` … `schema_v12.sql` files remain in the repository for history/debugging, but normal deployment should use the consolidated installer.
 
-After it succeeds, `game_settings_v11` contains `server.schema_version = 12` and `server.schema_patch = "12.2"`.
+After it succeeds, `game_settings_v11` contains `server.schema_version = 12` and `server.schema_patch = "12.8"`. For an already-working v12.x database, run only `supabase/schema_v12_8_FIX.sql`.
 
 See `MIGRATION_V12.md` and `FIX_SERVER_SYNC.md`.
 

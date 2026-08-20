@@ -1,4 +1,4 @@
-# Telegram Bot / Duel Setup — v11
+# Telegram Bot / Duel Setup — v12.8
 
 ## 1. BotFather
 
@@ -47,12 +47,7 @@ Target endpoint:
 https://YOUR_DOMAIN/api/telegram/webhook
 ```
 
-The setup asks Telegram for these update types:
-
-```text
-message
-callback_query
-```
+The setup asks Telegram for `message`, `edited_message`, `callback_query` and `my_chat_member`. The production auth route also checks the webhook after a verified Mini App login and repairs it if the URL/update list drifted.
 
 ## 4. Commands
 
@@ -88,7 +83,7 @@ A custom command can have:
 In a group or supergroup:
 
 1. Player B sends any normal message.
-2. Player A replies to that exact message with `дуэль`, `дуель` or `поединок`.
+2. Player A replies to that exact message with `дуэль`, `дуель`, `поединок`, `гонка` or `заезд`. If Privacy Mode is enabled, reply with `/duel` instead.
 3. The bot creates one pending challenge valid for 10 minutes.
 4. Only the challenged Telegram account can use **Принять дуэль**.
 5. After acceptance the bot shows **Открыть комнату дуэли**.
