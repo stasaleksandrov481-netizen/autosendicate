@@ -1,7 +1,7 @@
 import 'server-only';
 import { createServerSupabase } from '@/lib/supabase/server';
 
-const PROFILE_FIELDS = 'id,name,photo_url,telegram_username,level,balance,xp,races,wins,losses,total_earned,owned_cars,active_car_id,current_car_name,best_0_100,rating,last_seen,profile_tag';
+const PROFILE_FIELDS = 'id,name,photo_url,telegram_username,level,balance,xp,races,wins,losses,total_earned,owned_cars,active_car_id,current_car_name,best_0_100,rating,last_seen,profile_tag,profile_tags';
 
 export async function listPlayers() {
   const supabase = createServerSupabase();

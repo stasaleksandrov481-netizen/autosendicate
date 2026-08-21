@@ -52,7 +52,7 @@ export async function listFriends(playerId: string) {
   if (ids.length) {
     const { data: profiles, error: profilesError } = await supabase
       .from('player_profiles')
-      .select('id,name,telegram_username,photo_url,rating,wins,races,current_car_name,last_seen,profile_tag')
+      .select('id,name,telegram_username,photo_url,rating,wins,races,current_car_name,last_seen,profile_tag,profile_tags')
       .in('id', ids);
     if (profilesError) throw profilesError;
     for (const profile of (profiles ?? []) as PublicFriendProfile[]) profileMap.set(String(profile.id), profile);

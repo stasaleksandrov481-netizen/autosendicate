@@ -24,7 +24,7 @@ export async function listChatMessages(limit = 50) {
   if (uids.length) {
     const { data: profiles, error: profileError } = await supabase
       .from('player_profiles')
-      .select('id,owner_uid,telegram_username,photo_url,profile_tag')
+      .select('id,owner_uid,telegram_username,photo_url,profile_tag,profile_tags')
       .in('owner_uid', uids);
     if (profileError) throw profileError;
     for (const profile of profiles ?? []) {
@@ -48,7 +48,7 @@ export async function listChatMessages(limit = 50) {
 export async function sendChatMessage(playerId: string, text: string) {
   const supabase = createServerSupabase();
   const [{ data: profile, error: profileError }, { data: principal, error: principalError }] = await Promise.all([
-    supabase.from('player_profiles').select('name,owner_uid,banned_at,telegram_username,photo_url,profile_tag').eq('id', playerId).maybeSingle(),
+    supabase.from('player_profiles').select('name,owner_uid,banned_at,telegram_username,photo_url,profile_tag,profile_tags').eq('id', playerId).maybeSingle(),
     supabase.from('telegram_principals').select('owner_uid').eq('player_id', playerId).maybeSingle()
   ]);
   if (profileError) throw profileError;

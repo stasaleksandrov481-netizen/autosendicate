@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { bootstrapSecureSession } from '@/features/auth/client';
+import { TagList } from '@/components/profile/TagBadge';
 
 type Tab = 'overview' | 'players' | 'tags' | 'cars' | 'opponents' | 'bot' | 'settings';
 type JsonRecord = Record<string, unknown>;
@@ -22,6 +23,7 @@ interface AdminPlayer {
   ban_reason?: string | null;
   owned_cars?: number[];
   profile_tag?: { key: string; label: string; emoji: string; background: string; foreground: string } | null;
+  profile_tags?: Array<{ key:string; label:string; emoji:string; background:string; foreground:string; glow?:boolean }> | null;
 }
 
 interface AdminCar {
@@ -290,7 +292,7 @@ export function AdminDashboard() {
           <input className="admin-search" placeholder="ID, имя или @username" value={query} onChange={(event) => setQuery(event.target.value)} />
           <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Игрок</th><th>Баланс</th><th>Статистика</th><th>Рейтинг</th><th>Действия</th></tr></thead><tbody>
             {filteredPlayers.map((player) => <tr key={player.id}>
-              <td><b>{player.name} {player.profile_tag && <em style={{ background: player.profile_tag.background, color: player.profile_tag.foreground, borderColor: player.profile_tag.background }}>{player.profile_tag.emoji} {player.profile_tag.label}</em>}</b><small>{player.id}{player.telegram_username ? ` · @${player.telegram_username}` : ''}</small><small>Последний вход: {formatDate(player.last_seen)}</small>{player.banned_at && <em>ЗАБАНЕН · {player.ban_reason || 'Без причины'}</em>}</td>
+              <td><b>{player.name} {player.profile_tags?.length ? <TagList tags={player.profile_tags as any}/> : player.profile_tag && <em style={{ background: player.profile_tag.background, color: player.profile_tag.foreground, borderColor: player.profile_tag.background }}>{player.profile_tag.emoji} {player.profile_tag.label}</em>}</b><small>{player.id}{player.telegram_username ? ` · @${player.telegram_username}` : ''}</small><small>Последний вход: {formatDate(player.last_seen)}</small>{player.banned_at && <em>ЗАБАНЕН · {player.ban_reason || 'Без причины'}</em>}</td>
               <td>{formatNumber(player.balance)} SYND</td><td>{player.wins}W / {player.losses}L · {player.races} гонок · LVL {player.level}</td><td>{player.rating}</td>
               <td><div className="admin-actions">
                 <button onClick={() => void playerAction({ action: 'addBalance', playerId: player.id, amount: 10000 })}>+10K</button>

@@ -1246,3 +1246,6 @@ body.race-mode .race-low-fx .speed-effects,body.race-mode .race-low-fx .race-fx-
 .lb-name .profile-tag-v13{position:relative;top:-1px;}
 .admin-table em{font-style:normal;display:inline-flex;align-items:center;gap:4px;margin-left:5px;padding:4px 7px;border-radius:999px;font-size:8px;font-weight:1000;line-height:1;}
 @media (max-width:560px){.profile-tag-v13{max-width:170px;font-size:8px}.profile-tag-v13.compact{max-width:135px}.profile-tag-host-v13{margin-top:5px}}
+
+.profile-tag-list{display:inline-flex;gap:6px;flex-wrap:wrap;align-items:center}
+.profile-tag{display:inline-flex;align-items:center;gap:5px;padding:4px 9px;border-radius:999px;border:1px solid;font-size:12px;font-weight:800;line-height:1;letter-spacing:.01em;white-space:nowrap}
