@@ -3,6 +3,7 @@ import { createServerSupabase } from '@/lib/supabase/server';
 import type { GameSession } from '@/lib/security/session';
 import type { z } from 'zod';
 import { adminCarSchema, adminOpponentSchema, botCommandSchema, gameSettingSchema, playerAdminActionSchema } from './schema';
+import { normalizeTag, normalizeTags } from '@/features/tags/shared';
 
 type PlayerAction = z.infer<typeof playerAdminActionSchema>;
 type AdminCar = z.infer<typeof adminCarSchema>;
@@ -106,19 +107,37 @@ export async function getAdminStats() {
 
 export async function listAdminPlayers(query = '') {
   const s = createServerSupabase();
-  let request = s.from('player_profiles').select('id,name,telegram_username,level,balance,races,wins,losses,rating,current_car_name,last_seen,banned_at,ban_reason,owned_cars,profile_tag,profile_tags').order('last_seen', { ascending: false }).limit(200);
+  let request = s.from('player_profiles').select('id,name,telegram_username,level,balance,races,wins,losses,rating,current_car_name,last_seen,banned_at,ban_reason,owned_cars,profile_tags').order('last_seen', { ascending: false }).limit(200);
   const q = query.trim().replace(/[^A-Za-zА-Яа-яЁё0-9@._ -]/g, '').slice(0, 64);
   if (q) request = request.or(`id.ilike.%${q}%,name.ilike.%${q}%,telegram_username.ilike.%${q}%`);
   const { data, error } = await request;
   if (error) throw error;
-  return data ?? [];
+  return (data ?? []).map((row) => ({ ...row, profile_tags: normalizeTags(row.profile_tags) }));
 }
+
+const TAG_ACTIONS = new Set(['addTag', 'removeTag', 'setTags', 'clearTags']);
 
 export async function applyPlayerAdminAction(admin: GameSession, action: PlayerAction) {
   const s = createServerSupabase();
-  if (action.action === 'setTag' || action.action === 'setTags' || action.action === 'clearTag') {
-    const profileTags = action.action === 'setTags' ? action.tags : action.action === 'setTag' ? [action.tag] : [];
-    const { data, error } = await s.from('player_profiles').update({ profile_tags: profileTags, profile_tag: profileTags[0] ?? null }).eq('id', action.playerId).select('id,profile_tags,profile_tag').single();
+  if (TAG_ACTIONS.has(action.action)) {
+    const { data: current, error: fetchError } = await s.from('player_profiles').select('profile_tags').eq('id', action.playerId).maybeSingle();
+    if (fetchError) throw fetchError;
+    let nextTags = normalizeTags(current?.profile_tags);
+    if (action.action === 'addTag') {
+      const tag = normalizeTag(action.tag);
+      if (tag) {
+        nextTags = nextTags.filter((t) => t.key !== tag.key);
+        nextTags.push(tag);
+        nextTags = normalizeTags(nextTags);
+      }
+    } else if (action.action === 'removeTag') {
+      nextTags = nextTags.filter((t) => t.key !== action.tagKey);
+    } else if (action.action === 'setTags') {
+      nextTags = normalizeTags(action.tags);
+    } else if (action.action === 'clearTags') {
+      nextTags = [];
+    }
+    const { data, error } = await s.from('player_profiles').update({ profile_tags: nextTags }).eq('id', action.playerId).select('id,profile_tags').single();
     if (error) throw error;
     await audit(admin, `player.${action.action}`, 'player', action.playerId, action);
     return data;

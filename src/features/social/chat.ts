@@ -20,11 +20,11 @@ export async function listChatMessages(limit = 50) {
 
   const rows = (data ?? []) as ChatRow[];
   const uids = [...new Set(rows.map((row) => row.sender_uid).filter(Boolean))];
-  const byUid = new Map<string, { id: string; telegram_username: string | null; photo_url: string | null }>();
+  const byUid = new Map<string, { id: string; telegram_username: string | null; photo_url: string | null; profile_tags: unknown[] }>();
   if (uids.length) {
     const { data: profiles, error: profileError } = await supabase
       .from('player_profiles')
-      .select('id,owner_uid,telegram_username,photo_url,profile_tag,profile_tags')
+      .select('id,owner_uid,telegram_username,photo_url,profile_tags')
       .in('owner_uid', uids);
     if (profileError) throw profileError;
     for (const profile of profiles ?? []) {
@@ -32,7 +32,7 @@ export async function listChatMessages(limit = 50) {
         id: String(profile.id),
         telegram_username: profile.telegram_username ?? null,
         photo_url: profile.photo_url ?? null,
-        profile_tag: profile.profile_tag ?? null
+        profile_tags: profile.profile_tags ?? []
       });
     }
   }
@@ -41,14 +41,15 @@ export async function listChatMessages(limit = 50) {
     ...row,
     player_id: byUid.get(row.sender_uid)?.id ?? null,
     telegram_username: byUid.get(row.sender_uid)?.telegram_username ?? null,
-    photo_url: byUid.get(row.sender_uid)?.photo_url ?? null
+    photo_url: byUid.get(row.sender_uid)?.photo_url ?? null,
+    profile_tags: byUid.get(row.sender_uid)?.profile_tags ?? []
   }));
 }
 
 export async function sendChatMessage(playerId: string, text: string) {
   const supabase = createServerSupabase();
   const [{ data: profile, error: profileError }, { data: principal, error: principalError }] = await Promise.all([
-    supabase.from('player_profiles').select('name,owner_uid,banned_at,telegram_username,photo_url,profile_tag,profile_tags').eq('id', playerId).maybeSingle(),
+    supabase.from('player_profiles').select('name,owner_uid,banned_at,telegram_username,photo_url,profile_tags').eq('id', playerId).maybeSingle(),
     supabase.from('telegram_principals').select('owner_uid').eq('player_id', playerId).maybeSingle()
   ]);
   if (profileError) throw profileError;
@@ -82,6 +83,6 @@ export async function sendChatMessage(playerId: string, text: string) {
     player_id: playerId,
     telegram_username: profile.telegram_username ?? null,
     photo_url: profile.photo_url ?? null,
-    profile_tag: profile.profile_tag ?? null
+    profile_tags: profile.profile_tags ?? []
   };
 }

@@ -2,8 +2,7 @@
 
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { bootstrapSecureSession } from '@/features/auth/client';
-import { TagList } from '@/components/profile/TagBadge';
-import { TagManager } from '@/components/admin/TagManager';
+import { MAX_TAGS_PER_PLAYER, TAG_ICONS, TAG_PRESETS, tagIconSVG, type ProfileTag, type TagIconId } from '@/features/tags/shared';
 
 type Tab = 'overview' | 'players' | 'tags' | 'cars' | 'opponents' | 'bot' | 'settings';
 type JsonRecord = Record<string, unknown>;
@@ -23,8 +22,88 @@ interface AdminPlayer {
   banned_at?: string | null;
   ban_reason?: string | null;
   owned_cars?: number[];
-  profile_tag?: { key: string; label: string; emoji: string; background: string; foreground: string } | null;
-  profile_tags?: Array<{ key:string; label:string; emoji:string; background:string; foreground:string; glow?:boolean }> | null;
+  profile_tags?: ProfileTag[];
+}
+
+// Renders one badge exactly like it appears in-game (chat, leaderboard, profile) —
+// same CSS classes as the client runtime, so admins see a true preview.
+function TagBadgeView({ tag, compact, onRemove }: { tag: ProfileTag; compact?: boolean; onRemove?: () => void }) {
+  return (
+    <span
+      className={`tag-badge${compact ? ' compact' : ''}${tag.glow ? ' tag-badge-glow' : ''}`}
+      style={{ ['--tag-bg' as string]: tag.background, ['--tag-fg' as string]: tag.foreground }}
+    >
+      <span className="tag-badge-icon" dangerouslySetInnerHTML={{ __html: tagIconSVG(tag.icon, compact ? 10 : 12) }} />
+      <span className="tag-badge-label">{tag.label}</span>
+      {onRemove && <button type="button" className="tag-remove-x" title="Снять тег" onClick={onRemove}>×</button>}
+    </span>
+  );
+}
+
+const CUSTOM_TAG_DEFAULT = { label: '', icon: 'star' as TagIconId, background: '#FACC15', foreground: '#171717', glow: false };
+
+// The full "add a tag" popover: presets to click, plus a build-your-own form
+// (label, icon, colors, glow) with a live preview — used next to every player row.
+function TagPicker({
+  player,
+  onAdd
+}: {
+  player: AdminPlayer;
+  onAdd: (tag: ProfileTag) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState(CUSTOM_TAG_DEFAULT);
+  const assignedKeys = new Set((player.profile_tags ?? []).map((t) => t.key));
+  const atLimit = (player.profile_tags ?? []).length >= MAX_TAGS_PER_PLAYER;
+
+  function addPreset(preset: ProfileTag) {
+    if (atLimit || assignedKeys.has(preset.key)) return;
+    onAdd(preset);
+  }
+
+  function addCustom() {
+    const label = draft.label.trim();
+    if (!label || atLimit) return;
+    onAdd({ key: `custom_${Date.now()}`, label, icon: draft.icon, background: draft.background, foreground: draft.foreground, glow: draft.glow });
+    setDraft(CUSTOM_TAG_DEFAULT);
+  }
+
+  return (
+    <div className="tag-picker-pop">
+      <button type="button" onClick={() => setOpen((v) => !v)}>{open ? 'Закрыть' : '+ Тег'} {atLimit ? '(лимит)' : `(${(player.profile_tags ?? []).length}/${MAX_TAGS_PER_PLAYER})`}</button>
+      {open && <div className="tag-picker-panel">
+        <h4>Готовые теги</h4>
+        <div className="tag-picker-presets">
+          {TAG_PRESETS.map((preset) => (
+            <span key={preset.key} onClick={() => addPreset(preset)} style={{ opacity: assignedKeys.has(preset.key) || atLimit ? 0.4 : 1, cursor: assignedKeys.has(preset.key) || atLimit ? 'default' : 'pointer' }}>
+              <TagBadgeView tag={preset} compact />
+            </span>
+          ))}
+        </div>
+        <div className="tag-custom-form">
+          <h4>Свой тег</h4>
+          <input type="text" placeholder="Название тега" maxLength={24} value={draft.label} onChange={(e) => setDraft({ ...draft, label: e.target.value })} />
+          <div className="tag-icon-grid">
+            {TAG_ICONS.map((icon) => (
+              <button key={icon.id} type="button" title={icon.name} className={draft.icon === icon.id ? 'active' : ''} onClick={() => setDraft({ ...draft, icon: icon.id })} dangerouslySetInnerHTML={{ __html: tagIconSVG(icon.id, 15) }} />
+            ))}
+          </div>
+          <div className="tag-custom-row">
+            <label style={{ fontSize: 11, color: 'var(--text-muted)' }}>Фон</label>
+            <input className="tag-color-input" type="color" value={draft.background} onChange={(e) => setDraft({ ...draft, background: e.target.value })} />
+            <label style={{ fontSize: 11, color: 'var(--text-muted)' }}>Текст</label>
+            <input className="tag-color-input" type="color" value={draft.foreground} onChange={(e) => setDraft({ ...draft, foreground: e.target.value })} />
+            <label className="tag-glow-toggle"><input type="checkbox" checked={draft.glow} onChange={(e) => setDraft({ ...draft, glow: e.target.checked })} /> Свечение</label>
+          </div>
+          <div className="tag-custom-preview">
+            <span>Превью:</span>
+            <TagBadgeView tag={{ key: 'preview', label: draft.label || 'Название тега', icon: draft.icon, background: draft.background, foreground: draft.foreground, glow: draft.glow }} />
+          </div>
+          <button type="button" className="admin-primary" disabled={!draft.label.trim() || atLimit} onClick={addCustom}>Добавить тег</button>
+        </div>
+      </div>}
+    </div>
+  );
 }
 
 interface AdminCar {
@@ -127,16 +206,6 @@ interface CommandForm {
 const initialCar: CarForm = { id: 28, name: '', imagePath: '', price: 10000, power: 500, tier: 'Sport Tier 4', category: 'sport', flavor: '', active: true, sortOrder: 100 };
 const initialOpponent: OpponentForm = { key: 'npc_new', name: '', power: 500, reward: 900, unlockLevel: 2, carName: 'Уличная сборка', rating: 75, style: 'Агрессивный', favoriteTracks: 'Промзона, Тоннель', wins: 40, losses: 20, avatar: 'NP', taunt: '', preLines: 'Готов?', winLine: 'Ещё увидимся.', loseLine: 'Хороший заезд.', boss: false, active: true, sortOrder: 100 };
 const initialCommand: CommandForm = { command: 'help', responseText: 'Команды AutoSyndicate', enabled: true, parseMode: 'HTML', buttonLabel: '', buttonUrl: '' };
-const PLAYER_TAG_PRESETS = [
-  { key: 'project_team', label: 'Команда проекта', emoji: '✦', background: '#FACC15', foreground: '#171717' },
-  { key: 'creator', label: 'Создатель проекта', emoji: '◆', background: '#FF4D67', foreground: '#FFFFFF' },
-  { key: 'developer', label: 'Разработчик', emoji: '⚙', background: '#7C3AED', foreground: '#FFFFFF' },
-  { key: 'tester', label: 'Тестировщик', emoji: '✓', background: '#22C55E', foreground: '#07130A' },
-  { key: 'designer', label: 'Дизайнер', emoji: '✎', background: '#06B6D4', foreground: '#07131A' },
-  { key: 'partner', label: 'Партнёр', emoji: '◆', background: '#F97316', foreground: '#FFFFFF' },
-  { key: 'veteran', label: 'Ветеран', emoji: '★', background: '#64748B', foreground: '#FFFFFF' }
-] as const;
-
 async function request<T extends JsonRecord>(url: string, options?: RequestInit): Promise<T> {
   const response = await fetch(url, {
     credentials: 'include', cache: 'no-store', ...options,
@@ -246,6 +315,10 @@ export function AdminDashboard() {
     return players.filter((player) => `${player.id} ${player.name} ${player.telegram_username || ''}`.toLocaleLowerCase('ru-RU').includes(normalized));
   }, [players, query]);
 
+  function addTagTo(player: AdminPlayer, tag: ProfileTag) { void playerAction({ action: 'addTag', playerId: player.id, tag }); }
+  function removeTagFrom(player: AdminPlayer, tagKey: string) { void playerAction({ action: 'removeTag', playerId: player.id, tagKey }); }
+  function jumpToPlayerTags(player: AdminPlayer) { setQuery(player.telegram_username || player.name); setTab('tags'); }
+
   if (!ready) return <main className="admin-root"><div className="admin-auth-card"><b>AUTOSYNDICATE CONTROL</b><span>{notice || 'Проверка Telegram-администратора…'}</span></div></main>;
 
   const nav: Array<[Tab, string]> = [['overview','Обзор'],['players','Игроки'],['tags','🏷 Теги'],['cars','Машины'],['opponents','Соперники'],['bot','Telegram Bot'],['settings','Настройки']];
@@ -293,29 +366,13 @@ export function AdminDashboard() {
           <input className="admin-search" placeholder="ID, имя или @username" value={query} onChange={(event) => setQuery(event.target.value)} />
           <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Игрок</th><th>Баланс</th><th>Статистика</th><th>Рейтинг</th><th>Действия</th></tr></thead><tbody>
             {filteredPlayers.map((player) => <tr key={player.id}>
-              <td><b>{player.name} {player.profile_tags?.length ? <TagList tags={player.profile_tags as any}/> : player.profile_tag && <em style={{ background: player.profile_tag.background, color: player.profile_tag.foreground, borderColor: player.profile_tag.background }}>{player.profile_tag.emoji} {player.profile_tag.label}</em>}</b><small>{player.id}{player.telegram_username ? ` · @${player.telegram_username}` : ''}</small><small>Последний вход: {formatDate(player.last_seen)}</small>{player.banned_at && <em>ЗАБАНЕН · {player.ban_reason || 'Без причины'}</em>}</td>
+              <td><b>{player.name}</b>{(player.profile_tags ?? []).length > 0 && <span className="tags-row" style={{ display: 'inline-flex', marginLeft: 6 }}>{(player.profile_tags ?? []).map((t) => <TagBadgeView key={t.key} tag={t} compact />)}</span>}<small>{player.id}{player.telegram_username ? ` · @${player.telegram_username}` : ''}</small><small>Последний вход: {formatDate(player.last_seen)}</small>{player.banned_at && <em>ЗАБАНЕН · {player.ban_reason || 'Без причины'}</em>}</td>
               <td>{formatNumber(player.balance)} SYND</td><td>{player.wins}W / {player.losses}L · {player.races} гонок · LVL {player.level}</td><td>{player.rating}</td>
               <td><div className="admin-actions">
                 <button onClick={() => void playerAction({ action: 'addBalance', playerId: player.id, amount: 10000 })}>+10K</button>
                 <button onClick={() => { const value = Number(window.prompt('Новый баланс', String(player.balance))); if (Number.isFinite(value)) void playerAction({ action: 'setBalance', playerId: player.id, balance: Math.max(0, Math.trunc(value)) }); }}>Баланс</button>
                 <button onClick={() => { const value = Number(window.prompt('ID машины', '1')); if (Number.isFinite(value)) void playerAction({ action: 'grantCar', playerId: player.id, carId: Math.trunc(value) }); }}>+ Машина</button>
-                <button onClick={() => {
-                  const choices = PLAYER_TAG_PRESETS.map((tag, index) => `${index + 1}. ${tag.emoji} ${tag.label}`).join('\n');
-                  const raw = window.prompt(`Выбери тег для ${player.name}:\n${choices}\n\n8. Свой тег\n0. Снять тег`, '1');
-                  if (raw === null) return;
-                  const index = Number(raw) - 1;
-                  if (raw.trim() === '0') { void playerAction({ action: 'clearTag', playerId: player.id }); return; }
-                  if (Number.isInteger(index) && PLAYER_TAG_PRESETS[index]) { const tag = PLAYER_TAG_PRESETS[index]; void playerAction({ action: 'setTag', playerId: player.id, tag }); return; }
-                  if (raw.trim() === '8') {
-                    const label = window.prompt('Название тега', player.profile_tag?.label || 'Особый статус')?.trim();
-                    if (!label) return;
-                    const emoji = window.prompt('Смайлик тега', player.profile_tag?.emoji || '✦')?.trim() || '✦';
-                    const background = window.prompt('Фон тега, HEX', player.profile_tag?.background || '#FACC15')?.trim() || '#FACC15';
-                    const foreground = window.prompt('Цвет текста, HEX', player.profile_tag?.foreground || '#171717')?.trim() || '#171717';
-                    void playerAction({ action: 'setTag', playerId: player.id, tag: { key: 'custom_' + Date.now(), label, emoji, background, foreground } });
-                  }
-                }}>Тег</button>
-                {player.profile_tag && <button onClick={() => void playerAction({ action: 'clearTag', playerId: player.id })}>Снять тег</button>}
+                <button onClick={() => jumpToPlayerTags(player)}>🏷 Теги ({(player.profile_tags ?? []).length})</button>
                 <button className={player.banned_at ? 'ok' : 'danger'} onClick={() => player.banned_at ? void playerAction({ action: 'unban', playerId: player.id }) : void playerAction({ action: 'ban', playerId: player.id, reason: window.prompt('Причина бана', 'Нарушение правил') || 'Нарушение правил' })}>{player.banned_at ? 'Разбан' : 'Бан'}</button>
               </div></td>
             </tr>)}
@@ -323,19 +380,20 @@ export function AdminDashboard() {
         </>}
 
         {tab === 'tags' && <>
-          <TagManager />
-          <div className="admin-title"><div><span>Профили игроков</span><h1>🏷 Теги игроков</h1></div><b>{players.filter((player) => player.profile_tag).length} назначено</b></div>
-          <div className="admin-panel" style={{ marginBottom: 16 }}><h2>Быстрое назначение</h2><p style={{ marginTop: 0, color: 'var(--text-muted)' }}>Выбери игрока и выдай ему форумный статус. Изменение сразу сохраняется в профиле и используется во всех местах, где отображается имя игрока.</p></div>
+          <div className="admin-title"><div><span>Профили игроков</span><h1>🏷 Теги игроков</h1></div><b>{players.filter((player) => (player.profile_tags ?? []).length > 0).length} игроков с тегами</b></div>
+          <div className="admin-panel" style={{ marginBottom: 16 }}>
+            <h2>Как это работает</h2>
+            <p style={{ marginTop: 0, color: 'var(--text-muted)' }}>Каждому игроку можно выдать сразу несколько бейджей (до {MAX_TAGS_PER_PLAYER}) — готовых или полностью своих, с иконкой, цветом фона/текста и свечением. Теги сразу видны в чате, рейтинге, клане и профиле игрока.</p>
+            <div className="tag-manager-lib">{TAG_PRESETS.map((preset) => <TagBadgeView key={preset.key} tag={preset} />)}</div>
+          </div>
           <input className="admin-search" placeholder="Найти игрока для выдачи тега" value={query} onChange={(event) => setQuery(event.target.value)} />
-          <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Игрок</th><th>Текущий тег</th><th>Выдать тег</th></tr></thead><tbody>
+          <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Игрок</th><th>Текущие теги</th><th>Управление</th></tr></thead><tbody>
             {filteredPlayers.map((player) => <tr key={player.id}>
               <td><b>{player.name}</b><small>{player.id}{player.telegram_username ? ` · @${player.telegram_username}` : ''}</small></td>
-              <td>{player.profile_tag ? <em style={{ background: player.profile_tag.background, color: player.profile_tag.foreground, borderColor: player.profile_tag.background, display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 9px', borderRadius: 999, fontStyle: 'normal', fontWeight: 900 }}>{player.profile_tag.emoji} {player.profile_tag.label}</em> : <span style={{ color: 'var(--text-muted)' }}>Без тега</span>}</td>
-              <td><div className="admin-actions">
-                {PLAYER_TAG_PRESETS.map((tag) => <button key={tag.key} title={tag.label} onClick={() => void playerAction({ action: 'setTag', playerId: player.id, tag })}>{tag.emoji} {tag.label}</button>)}
-                <button onClick={() => { const label = window.prompt('Название тега', player.profile_tag?.label || 'Особый статус')?.trim(); if (!label) return; const emoji = window.prompt('Смайлик тега', player.profile_tag?.emoji || '✦')?.trim() || '✦'; const background = window.prompt('Фон тега, HEX', player.profile_tag?.background || '#FACC15')?.trim() || '#FACC15'; const foreground = window.prompt('Цвет текста, HEX', player.profile_tag?.foreground || '#171717')?.trim() || '#171717'; void playerAction({ action: 'setTag', playerId: player.id, tag: { key: 'custom_' + Date.now(), label, emoji, background, foreground } }); }}>Свой тег</button>
-                {player.profile_tag && <button className="danger" onClick={() => void playerAction({ action: 'clearTag', playerId: player.id })}>Снять</button>}
-              </div></td>
+              <td>{(player.profile_tags ?? []).length > 0
+                ? <div className="tag-assigned-row">{(player.profile_tags ?? []).map((t) => <TagBadgeView key={t.key} tag={t} onRemove={() => removeTagFrom(player, t.key)} />)}</div>
+                : <span style={{ color: 'var(--text-muted)' }}>Без тегов</span>}</td>
+              <td><TagPicker player={player} onAdd={(tag) => addTagTo(player, tag)} /></td>
             </tr>)}
           </tbody></table></div>
         </>}

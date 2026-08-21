@@ -15,7 +15,7 @@ type PublicFriendProfile = {
   races: number;
   current_car_name: string | null;
   last_seen: string | null;
-  profile_tag: { key: string; label: string; emoji: string; background: string; foreground: string } | null;
+  profile_tags: Array<{ key: string; label: string; icon: string; background: string; foreground: string; glow?: boolean }>;
 };
 
 export async function applyFriendAction(playerId: string, body: FriendshipAction) {
@@ -52,7 +52,7 @@ export async function listFriends(playerId: string) {
   if (ids.length) {
     const { data: profiles, error: profilesError } = await supabase
       .from('player_profiles')
-      .select('id,name,telegram_username,photo_url,rating,wins,races,current_car_name,last_seen,profile_tag,profile_tags')
+      .select('id,name,telegram_username,photo_url,rating,wins,races,current_car_name,last_seen,profile_tags')
       .in('id', ids);
     if (profilesError) throw profilesError;
     for (const profile of (profiles ?? []) as PublicFriendProfile[]) profileMap.set(String(profile.id), profile);
