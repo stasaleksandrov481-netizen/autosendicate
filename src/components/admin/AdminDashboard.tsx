@@ -248,7 +248,7 @@ export function AdminDashboard() {
   const nav: Array<[Tab, string]> = [['overview','Обзор'],['players','Игроки'],['tags','🏷 Теги'],['cars','Машины'],['opponents','Соперники'],['bot','Telegram Bot'],['settings','Настройки']];
 
   return <main className="admin-root">
-    <header className="admin-header"><div><b>AUTOSYNDICATE</b><span>CONTROL CENTER v12</span></div><a href="/">В игру</a></header>
+    <header className="admin-header"><div><b>AUTOSYNDICATE</b><span>CONTROL CENTER v12</span></div><div style={{ display: 'flex', gap: 8, alignItems: 'center' }}><button className="admin-primary" type="button" onClick={() => setTab('tags')}>🏷 ТЕГИ ИГРОКОВ</button><a href="/">В игру</a></div></header>
     <div className="admin-layout">
       <aside className="admin-sidebar">{nav.map(([key, label]) => <button key={key} className={tab === key ? 'active' : ''} onClick={() => setTab(key)}>{label}</button>)}</aside>
       <section className="admin-content">
@@ -286,7 +286,7 @@ export function AdminDashboard() {
         </>}
 
         {tab === 'players' && <>
-          <div className="admin-title"><div><span>Модерация и экономика</span><h1>Игроки</h1></div><b>{filteredPlayers.length} / {players.length}</b></div>
+          <div className="admin-title"><div><span>Модерация и экономика</span><h1>Игроки</h1></div><div style={{ display: 'flex', gap: 8, alignItems: 'center' }}><button className="admin-primary" type="button" onClick={() => setTab('tags')}>🏷 Управление тегами</button><b>{filteredPlayers.length} / {players.length}</b></div></div>
           <input className="admin-search" placeholder="ID, имя или @username" value={query} onChange={(event) => setQuery(event.target.value)} />
           <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Игрок</th><th>Баланс</th><th>Статистика</th><th>Рейтинг</th><th>Действия</th></tr></thead><tbody>
             {filteredPlayers.map((player) => <tr key={player.id}>
