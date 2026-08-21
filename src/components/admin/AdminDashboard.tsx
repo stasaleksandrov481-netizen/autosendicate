@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { bootstrapSecureSession } from '@/features/auth/client';
 import { TagList } from '@/components/profile/TagBadge';
+import { TagManager } from '@/components/admin/TagManager';
 
 type Tab = 'overview' | 'players' | 'tags' | 'cars' | 'opponents' | 'bot' | 'settings';
 type JsonRecord = Record<string, unknown>;
@@ -322,6 +323,7 @@ export function AdminDashboard() {
         </>}
 
         {tab === 'tags' && <>
+          <TagManager />
           <div className="admin-title"><div><span>Профили игроков</span><h1>🏷 Теги игроков</h1></div><b>{players.filter((player) => player.profile_tag).length} назначено</b></div>
           <div className="admin-panel" style={{ marginBottom: 16 }}><h2>Быстрое назначение</h2><p style={{ marginTop: 0, color: 'var(--text-muted)' }}>Выбери игрока и выдай ему форумный статус. Изменение сразу сохраняется в профиле и используется во всех местах, где отображается имя игрока.</p></div>
           <input className="admin-search" placeholder="Найти игрока для выдачи тега" value={query} onChange={(event) => setQuery(event.target.value)} />
