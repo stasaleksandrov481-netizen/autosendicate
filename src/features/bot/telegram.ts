@@ -58,14 +58,6 @@ export function editTelegramMessage(chatId: number, messageId: number, text: str
   });
 }
 
-export function editTelegramInlineMessage(inlineMessageId: string, text: string, keyboard?: InlineButton[][]) {
-  return telegramCall('editMessageText', {
-    inline_message_id: inlineMessageId, text, parse_mode: 'HTML',
-    reply_markup: keyboard ? { inline_keyboard: keyboard } : undefined,
-    disable_web_page_preview: true
-  });
-}
-
 export function answerTelegramInlineQuery(inlineQueryId: string, results: unknown[], options?: { cacheTime?: number; isPersonal?: boolean; nextOffset?: string }) {
   return telegramCall('answerInlineQuery', { inline_query_id: inlineQueryId, results, cache_time: options?.cacheTime ?? 0, is_personal: options?.isPersonal ?? true, next_offset: options?.nextOffset ?? '' });
 }
@@ -95,8 +87,7 @@ export async function setTelegramWebhook() {
     commands: [
       { command: 'start', description: 'Открыть AutoSyndicate' },
       { command: 'help', description: 'Помощь и команды' },
-      { command: 'duel', description: 'Вызвать игрока ответом на сообщение' },
-      { command: 'duels', description: 'Открыть уличные дуэли' }
+      { command: 'duel', description: 'Вызвать игрока на дуэль ответом' }
     ]
   });
   return result;

@@ -20,15 +20,14 @@ const me = await api('getMe');
 await api('setWebhook', {
   url: `${appUrl}/api/telegram/webhook`,
   secret_token: secret,
-  allowed_updates: ['message','edited_message','callback_query','inline_query','my_chat_member'],
+  allowed_updates: ['message','edited_message','callback_query','my_chat_member'],
   drop_pending_updates: false,
   max_connections: 40
 });
 await api('setMyCommands', { commands: [
   {command:'start',description:'Открыть AutoSyndicate'},
   {command:'help',description:'Помощь'},
-  {command:'duel',description:'Вызвать игрока ответом на сообщение'},
-  {command:'duels',description:'Открыть уличные дуэли'}
+  {command:'duel',description:'Вызвать игрока ответом на сообщение'}
 ]});
 const info = await api('getWebhookInfo');
 console.log(JSON.stringify({
