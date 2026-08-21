@@ -141,7 +141,17 @@ export async function handleTelegramUpdate(update: TgUpdate) {
 
   if (update.inline_query) {
     try { await handleInlineQuery(update.inline_query); }
-    catch (error) { console.error('inline duel failed', error); try { await answerTelegramInlineQuery(update.inline_query.id, [], {cacheTime:0,isPersonal:true}); } catch {} }
+    catch (error) {
+      console.error('inline duel failed', error);
+      const message = error instanceof Error ? error.message : 'unknown error';
+      try {
+        await answerTelegramInlineQuery(update.inline_query.id, [{
+          type: 'article', id: 'debug-error', title: '⚠️ Ошибка инлайна (временно)',
+          description: message.slice(0, 200),
+          input_message_content: { message_text: `Отладка: ${message.slice(0, 300)}` }
+        }], {cacheTime:0,isPersonal:true});
+      } catch {}
+    }
     return { inline_query: true };
   }
 
