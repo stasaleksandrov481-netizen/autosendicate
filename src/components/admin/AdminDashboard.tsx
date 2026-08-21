@@ -137,6 +137,42 @@ async function request<T extends JsonRecord>(url: string, options?: RequestInit)
 function formatNumber(value: number) { return Number(value || 0).toLocaleString('ru-RU'); }
 function formatDate(value?: string | null) { return value ? new Date(value).toLocaleString('ru-RU') : '—'; }
 
+// Turns the diagnostic auth error set by bootstrapSecureSession() into a message
+// that actually reflects what went wrong, instead of always telling the user to
+// "open from Telegram" even when they already did exactly that.
+function describeAuthIssue(issue?: { code: string; message: string; status?: number } | null): string {
+  if (!issue) return 'Открой Control Center из Telegram через /admin (сессия не установлена)';
+  switch (issue.code) {
+    case 'TELEGRAM_INITDATA_MISSING':
+      return 'Telegram не передал initData. Открой ссылку панели через кнопку в боте, а не как обычную веб-страницу.';
+    case 'TELEGRAM_AUTH_INVALID':
+      return `Telegram отклонил подпись сессии (${issue.message}). Обычно значит: неверный TELEGRAM_BOT_TOKEN на сервере, либо ссылка открыта не через актуальный бот/Mini App, либо initData устарел — попробуй закрыть и снова открыть /admin.`;
+    case 'SERVER_CONFIG_INVALID':
+      return 'Серверу не хватает переменных окружения (проверь ADMIN_TELEGRAM_IDS, TELEGRAM_BOT_TOKEN, SESSION_SECRET и т.д. на хостинге).';
+    case 'SERVER_SESSION_MISSING':
+      return 'Сервер принял Telegram-авторизацию, но не создал сессию (cookie). Проверь SESSION_SECRET и настройки cookie (secure/sameSite) на проде.';
+    case 'SERVER_UNREACHABLE':
+      return `Не удалось достучаться до сервера (${issue.message}). Проверь, что бэкенд задеплоен и доступен.`;
+    case 'SERVER_SESSION_ERROR':
+      return `Ошибка сессии на сервере (${issue.message}).`;
+    default:
+      return `Ошибка авторизации: ${issue.message || issue.code}`;
+  }
+}
+
+// Distinguishes "you're logged in but not an admin" (FORBIDDEN from requireAdmin())
+// from other load failures, since that case has a very specific, actionable fix.
+function describeLoadError(error: unknown): string {
+  const message = error instanceof Error ? error.message : 'Нет доступа';
+  if (message === 'FORBIDDEN') {
+    return 'Твой Telegram ID авторизован, но его нет в списке администраторов (переменная ADMIN_TELEGRAM_IDS на сервере). Добавь свой числовой Telegram ID туда и перезапусти сервер.';
+  }
+  if (message === 'PLAYER_BANNED') {
+    return 'Этот игровой аккаунт забанен, поэтому доступ в /admin закрыт.';
+  }
+  return message;
+}
+
 export function AdminDashboard() {
   const [tab, setTab] = useState<Tab>('overview');
   const [ready, setReady] = useState(false);
@@ -174,11 +210,11 @@ export function AdminDashboard() {
     void (async () => {
       try {
         const authenticated = await bootstrapSecureSession();
-        if (!authenticated) throw new Error('Открой Control Center из Telegram через /admin');
+        if (!authenticated) throw new Error(describeAuthIssue(window.__AUTOSYNDICATE_AUTH_ERROR__));
         await loadAll();
         setReady(true);
       } catch (error) {
-        setNotice(error instanceof Error ? error.message : 'Нет доступа');
+        setNotice(describeLoadError(error));
       }
     })();
   }, []);
