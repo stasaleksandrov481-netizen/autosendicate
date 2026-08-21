@@ -8,6 +8,25 @@ export interface TelegramPrincipal {
   tokenHash?: string;
 }
 
+function isAlreadyRegisteredError(message: unknown) {
+  return String(message ?? '').toLowerCase().includes('already been registered')
+    || String(message ?? '').toLowerCase().includes('already registered');
+}
+
+// Finds an orphaned Supabase Auth user (no linked player_profiles row) by email.
+// admin.listUsers() has no server-side email filter, so we page through results.
+async function findAuthUserIdByEmail(supabase: ReturnType<typeof createServerSupabase>, email: string): Promise<string | null> {
+  const perPage = 1000;
+  for (let page = 1; page <= 20; page++) {
+    const { data, error } = await supabase.auth.admin.listUsers({ page, perPage });
+    if (error) throw error;
+    const match = data.users.find((candidate) => candidate.email === email);
+    if (match) return match.id;
+    if (data.users.length < perPage) return null;
+  }
+  return null;
+}
+
 export async function ensureTelegramPrincipal(user: VerifiedTelegramUser): Promise<TelegramPrincipal> {
   const supabase = createServerSupabase();
   const playerId = `tg_${user.id}`;
@@ -28,8 +47,22 @@ export async function ensureTelegramPrincipal(user: VerifiedTelegramUser): Promi
       email_confirm: true,
       user_metadata: { telegram_id: user.id, telegram_verified: true }
     });
-    if (error || !data.user) throw error ?? new Error('failed to create Supabase principal');
-    ownerUid = data.user.id;
+    if (error || !data.user) {
+      // A Supabase Auth user with this synthetic email can already exist without a matching
+      // player_profiles row (e.g. left over from an earlier interrupted login). Recover it
+      // instead of hard-failing the whole login.
+      if (!isAlreadyRegisteredError(error?.message)) throw error ?? new Error('failed to create Supabase principal');
+      const recoveredId = await findAuthUserIdByEmail(supabase, email);
+      if (!recoveredId) throw error ?? new Error('failed to create Supabase principal');
+      ownerUid = recoveredId;
+      const { error: syncError } = await supabase.auth.admin.updateUserById(recoveredId, {
+        email_confirm: true,
+        user_metadata: { telegram_id: user.id, telegram_verified: true }
+      });
+      if (syncError) console.warn('Failed to sync recovered Supabase principal metadata', syncError);
+    } else {
+      ownerUid = data.user.id;
+    }
   } else {
     const { error } = await supabase.auth.admin.updateUserById(ownerUid, {
       email,
