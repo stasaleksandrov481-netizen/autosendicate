@@ -24,14 +24,15 @@ export async function listChatMessages(limit = 50) {
   if (uids.length) {
     const { data: profiles, error: profileError } = await supabase
       .from('player_profiles')
-      .select('id,owner_uid,telegram_username,photo_url')
+      .select('id,owner_uid,telegram_username,photo_url,profile_tag')
       .in('owner_uid', uids);
     if (profileError) throw profileError;
     for (const profile of profiles ?? []) {
       if (profile.owner_uid) byUid.set(String(profile.owner_uid), {
         id: String(profile.id),
         telegram_username: profile.telegram_username ?? null,
-        photo_url: profile.photo_url ?? null
+        photo_url: profile.photo_url ?? null,
+        profile_tag: profile.profile_tag ?? null
       });
     }
   }
@@ -47,7 +48,7 @@ export async function listChatMessages(limit = 50) {
 export async function sendChatMessage(playerId: string, text: string) {
   const supabase = createServerSupabase();
   const [{ data: profile, error: profileError }, { data: principal, error: principalError }] = await Promise.all([
-    supabase.from('player_profiles').select('name,owner_uid,banned_at,telegram_username,photo_url').eq('id', playerId).maybeSingle(),
+    supabase.from('player_profiles').select('name,owner_uid,banned_at,telegram_username,photo_url,profile_tag').eq('id', playerId).maybeSingle(),
     supabase.from('telegram_principals').select('owner_uid').eq('player_id', playerId).maybeSingle()
   ]);
   if (profileError) throw profileError;
@@ -80,6 +81,7 @@ export async function sendChatMessage(playerId: string, text: string) {
     ...data,
     player_id: playerId,
     telegram_username: profile.telegram_username ?? null,
-    photo_url: profile.photo_url ?? null
+    photo_url: profile.photo_url ?? null,
+    profile_tag: profile.profile_tag ?? null
   };
 }

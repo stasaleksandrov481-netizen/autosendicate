@@ -21,6 +21,7 @@ interface AdminPlayer {
   banned_at?: string | null;
   ban_reason?: string | null;
   owned_cars?: number[];
+  profile_tag?: { key: string; label: string; emoji: string; background: string; foreground: string } | null;
 }
 
 interface AdminCar {
@@ -123,6 +124,15 @@ interface CommandForm {
 const initialCar: CarForm = { id: 28, name: '', imagePath: '', price: 10000, power: 500, tier: 'Sport Tier 4', category: 'sport', flavor: '', active: true, sortOrder: 100 };
 const initialOpponent: OpponentForm = { key: 'npc_new', name: '', power: 500, reward: 900, unlockLevel: 2, carName: 'Уличная сборка', rating: 75, style: 'Агрессивный', favoriteTracks: 'Промзона, Тоннель', wins: 40, losses: 20, avatar: 'NP', taunt: '', preLines: 'Готов?', winLine: 'Ещё увидимся.', loseLine: 'Хороший заезд.', boss: false, active: true, sortOrder: 100 };
 const initialCommand: CommandForm = { command: 'help', responseText: 'Команды AutoSyndicate', enabled: true, parseMode: 'HTML', buttonLabel: '', buttonUrl: '' };
+const PLAYER_TAG_PRESETS = [
+  { key: 'project_team', label: 'Команда проекта', emoji: '✦', background: '#FACC15', foreground: '#171717' },
+  { key: 'creator', label: 'Создатель проекта', emoji: '◆', background: '#FF4D67', foreground: '#FFFFFF' },
+  { key: 'developer', label: 'Разработчик', emoji: '⚙', background: '#7C3AED', foreground: '#FFFFFF' },
+  { key: 'tester', label: 'Тестировщик', emoji: '✓', background: '#22C55E', foreground: '#07130A' },
+  { key: 'designer', label: 'Дизайнер', emoji: '✎', background: '#06B6D4', foreground: '#07131A' },
+  { key: 'partner', label: 'Партнёр', emoji: '◆', background: '#F97316', foreground: '#FFFFFF' },
+  { key: 'veteran', label: 'Ветеран', emoji: '★', background: '#64748B', foreground: '#FFFFFF' }
+] as const;
 
 async function request<T extends JsonRecord>(url: string, options?: RequestInit): Promise<T> {
   const response = await fetch(url, {
@@ -280,12 +290,29 @@ export function AdminDashboard() {
           <input className="admin-search" placeholder="ID, имя или @username" value={query} onChange={(event) => setQuery(event.target.value)} />
           <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Игрок</th><th>Баланс</th><th>Статистика</th><th>Рейтинг</th><th>Действия</th></tr></thead><tbody>
             {filteredPlayers.map((player) => <tr key={player.id}>
-              <td><b>{player.name}</b><small>{player.id}{player.telegram_username ? ` · @${player.telegram_username}` : ''}</small><small>Последний вход: {formatDate(player.last_seen)}</small>{player.banned_at && <em>ЗАБАНЕН · {player.ban_reason || 'Без причины'}</em>}</td>
+              <td><b>{player.name} {player.profile_tag && <em style={{ background: player.profile_tag.background, color: player.profile_tag.foreground, borderColor: player.profile_tag.background }}>{player.profile_tag.emoji} {player.profile_tag.label}</em>}</b><small>{player.id}{player.telegram_username ? ` · @${player.telegram_username}` : ''}</small><small>Последний вход: {formatDate(player.last_seen)}</small>{player.banned_at && <em>ЗАБАНЕН · {player.ban_reason || 'Без причины'}</em>}</td>
               <td>{formatNumber(player.balance)} SYND</td><td>{player.wins}W / {player.losses}L · {player.races} гонок · LVL {player.level}</td><td>{player.rating}</td>
               <td><div className="admin-actions">
                 <button onClick={() => void playerAction({ action: 'addBalance', playerId: player.id, amount: 10000 })}>+10K</button>
                 <button onClick={() => { const value = Number(window.prompt('Новый баланс', String(player.balance))); if (Number.isFinite(value)) void playerAction({ action: 'setBalance', playerId: player.id, balance: Math.max(0, Math.trunc(value)) }); }}>Баланс</button>
                 <button onClick={() => { const value = Number(window.prompt('ID машины', '1')); if (Number.isFinite(value)) void playerAction({ action: 'grantCar', playerId: player.id, carId: Math.trunc(value) }); }}>+ Машина</button>
+                <button onClick={() => {
+                  const choices = PLAYER_TAG_PRESETS.map((tag, index) => `${index + 1}. ${tag.emoji} ${tag.label}`).join('\n');
+                  const raw = window.prompt(`Выбери тег для ${player.name}:\n${choices}\n\n8. Свой тег\n0. Снять тег`, '1');
+                  if (raw === null) return;
+                  const index = Number(raw) - 1;
+                  if (raw.trim() === '0') { void playerAction({ action: 'clearTag', playerId: player.id }); return; }
+                  if (Number.isInteger(index) && PLAYER_TAG_PRESETS[index]) { const tag = PLAYER_TAG_PRESETS[index]; void playerAction({ action: 'setTag', playerId: player.id, tag }); return; }
+                  if (raw.trim() === '8') {
+                    const label = window.prompt('Название тега', player.profile_tag?.label || 'Особый статус')?.trim();
+                    if (!label) return;
+                    const emoji = window.prompt('Смайлик тега', player.profile_tag?.emoji || '✦')?.trim() || '✦';
+                    const background = window.prompt('Фон тега, HEX', player.profile_tag?.background || '#FACC15')?.trim() || '#FACC15';
+                    const foreground = window.prompt('Цвет текста, HEX', player.profile_tag?.foreground || '#171717')?.trim() || '#171717';
+                    void playerAction({ action: 'setTag', playerId: player.id, tag: { key: 'custom_' + Date.now(), label, emoji, background, foreground } });
+                  }
+                }}>Тег</button>
+                {player.profile_tag && <button onClick={() => void playerAction({ action: 'clearTag', playerId: player.id })}>Снять тег</button>}
                 <button className={player.banned_at ? 'ok' : 'danger'} onClick={() => player.banned_at ? void playerAction({ action: 'unban', playerId: player.id }) : void playerAction({ action: 'ban', playerId: player.id, reason: window.prompt('Причина бана', 'Нарушение правил') || 'Нарушение правил' })}>{player.banned_at ? 'Разбан' : 'Бан'}</button>
               </div></td>
             </tr>)}

@@ -19,7 +19,7 @@ let telegramInitData = '';
 
 function defaultState(){
   return {
-    playerName: 'Гонщик', playerPhoto:null, playerId:null,
+    playerName: 'Гонщик', playerPhoto:null, playerId:null, profileTag:null,
     coins:1500, xp:0, level:1, nitro:2,
     ownedCars:[1], activeCarId:1, upgrades:{}, fuel:{}, condition:{},
     vehicleInstances:{}, plates:{}, tuningHistory:{}, caseHistory:[],
@@ -82,6 +82,18 @@ function normalizeTournamentRuns(src){
 function normalizeContracts(src){
   if(!plainObject(src))return {day:'',items:{}};const out={day:safeText(src.day,'',16),items:{}};if(plainObject(src.items))Object.keys(src.items).slice(0,50).forEach(k=>{const r=src.items[k];if(plainObject(r)&&/^[\w-]{1,64}$/.test(k))out.items[k]={progress:intNumber(r.progress,0,0,1000),claimed:r.claimed===true};});return out;
 }
+function normalizeProfileTag(v){
+  if(!plainObject(v)) return null;
+  const key=safeText(v.key,'',40),label=safeText(v.label,'',40),emoji=safeText(v.emoji,'✦',8);
+  const background=/^#[0-9a-f]{6}$/i.test(String(v.background||''))?String(v.background):'#FACC15';
+  const foreground=/^#[0-9a-f]{6}$/i.test(String(v.foreground||''))?String(v.foreground):'#171717';
+  return key&&label?{key,label,emoji,background,foreground}:null;
+}
+function profileTagHTML(tag,compact=false){
+  const t=normalizeProfileTag(tag); if(!t)return '';
+  const bg=escapeAttrLocal(t.background),fg=escapeAttrLocal(t.foreground);
+  return '<span class="profile-tag-v13 '+(compact?'compact':'')+'" style="--tag-bg:'+bg+';--tag-fg:'+fg+'">'+(t.emoji?'<span class="profile-tag-emoji">'+escapeHtml(t.emoji)+'</span>':'')+escapeHtml(t.label)+'</span>';
+}
 function normalizeState(raw){
   const b=defaultState(), s=plainObject(raw)?raw:{};
   const stats=plainObject(s.stats)?s.stats:{};
@@ -99,6 +111,7 @@ function normalizeState(raw){
     playerName:safeText(s.playerName,'Гонщик',48),
     playerPhoto:safePhotoUrl(s.playerPhoto),
     playerId:safePlayerId(s.playerId),
+    profileTag:normalizeProfileTag(s.profileTag),
     coins:intNumber(s.coins,b.coins,0,1_000_000_000),
     xp:intNumber(s.xp,0,0,10_000_000), level:intNumber(s.level,1,1,999), nitro:intNumber(s.nitro,2,0,9999),
     ownedCars:owned, activeCarId:active,
@@ -1203,7 +1216,7 @@ async function renderLeaderboard(){
     row.className='lb-row '+(me?'me':'');
     row.onclick=()=>openPublicProfileData(r);
     row.innerHTML='<div class="lb-rank '+rankCls+'">#'+(i+1)+'</div>'+
-      '<div class="lb-name">'+escapeHtml(r.name||'Гонщик')+(me?' <small style="color:var(--green)">ВЫ</small>':'')+
+      '<div class="lb-name">'+escapeHtml(r.name||'Гонщик')+(me?' <small style="color:var(--green)">ВЫ</small>':'')+profileTagHTML(r.profile_tag,true)+
       '<small style="display:block;color:var(--text-muted);font-size:8px;">LVL '+(Number(r.level)||1)+' · '+wr+'% WR · '+carNames.length+' машин</small>'+
       '<div class="player-lb-cars">'+(carNames.slice(0,4).map(x=>'<span class="player-lb-car">'+escapeHtml(x)+'</span>').join('')+(carNames.length>4?'<span class="player-lb-car">+'+(carNames.length-4)+'</span>':''))+'</div></div>'+
       '<div class="lb-val">'+fmt(Number(r.balance)||0)+' <small>SYND</small></div>';
@@ -1321,7 +1334,7 @@ function closeDailyModal(){ document.getElementById('daily-modal-root').innerHTM
 /* ==================== PROFILE ==================== */
 function renderProfile(){
   updateHeader();updateAvatarUI();ensureContracts();
-  document.getElementById('profile-name').innerText=state.playerName;document.getElementById('profile-lvl').innerText=state.level;document.getElementById('p-balance').innerText=fmt(state.coins);document.getElementById('p-cars').innerText=state.ownedCars.length;document.getElementById('p-races').innerText=state.stats.races;
+  document.getElementById('profile-name').innerText=state.playerName;const profileNameEl=document.getElementById('profile-name');if(profileNameEl){let tagEl=document.getElementById('profile-tag-v13');if(!tagEl){tagEl=document.createElement('div');tagEl.id='profile-tag-v13';tagEl.className='profile-tag-host-v13';profileNameEl.insertAdjacentElement('afterend',tagEl);}tagEl.innerHTML=profileTagHTML(state.profileTag);tagEl.style.display=state.profileTag?'':'none';}document.getElementById('profile-lvl').innerText=state.level;document.getElementById('p-balance').innerText=fmt(state.coins);document.getElementById('p-cars').innerText=state.ownedCars.length;document.getElementById('p-races').innerText=state.stats.races;
   const wr=state.stats.races>0?Math.round(state.stats.wins/state.stats.races*100):0;document.getElementById('p-winrate').innerText=wr+'%';document.getElementById('p-wins').innerText=state.stats.wins;document.getElementById('p-losses').innerText=state.stats.losses;document.getElementById('p-earned').innerText=fmt(state.stats.totalEarned);document.getElementById('p-fines').innerText=state.stats.finesCount;
   const need=xpNeeded(state.level);document.getElementById('xp-text').innerText=state.xp+'/'+need;document.getElementById('xp-fill').style.width=Math.round(state.xp/need*100)+'%';document.getElementById('ach-progress-sub').innerText=Object.keys(state.achievements).length+'/'+achievementsDB.length;document.getElementById('hub-nitro-count').innerText=state.nitro;document.getElementById('daily-hub-sub').innerText=checkDailyEligible()?'Забрать!':'Уже забрано';
   const activeContracts=getActiveContracts(),done=activeContracts.filter(c=>contractStatus(c).done).length;document.getElementById('contract-progress-sub').innerText=done+'/'+activeContracts.length+' выполнено';document.getElementById('district-progress-sub').innerText=fmt(state.districtRep)+' REP';
@@ -2001,7 +2014,8 @@ function playerProfilePayload(){
     total_earned: Number(state.stats?.totalEarned)||0,
     owned_cars: Array.isArray(state.ownedCars)?state.ownedCars.slice(0,100):[],
     active_car_id: Number(state.activeCarId)||1,
-    last_seen: new Date().toISOString()
+    last_seen: new Date().toISOString(),
+    profile_tag: normalizeProfileTag(state.profileTag)
   };
 }
 let profileSyncInFlight:any=null,lastProfileSyncAt=0;
@@ -2206,7 +2220,7 @@ function appendChatMessage(m){
   div.className='chat-msg'+(isMe?' me':'');
   const nm=escapeHtml(m.user_name||'Игрок');
   const profileTarget=m.player_id||m.user_name||'Игрок';
-  div.innerHTML='<div class="chat-msg-name chat-profile-link" onclick="openPublicProfileByName('+JSON.stringify(profileTarget).replace(/"/g,'&quot;')+')">'+nm+' <span style="font-size:8px;color:var(--accent);">ПРОФИЛЬ</span></div><div class="chat-msg-text">'+escapeHtml(m.message)+'</div><div class="chat-msg-time">'+time+'</div>';
+  div.innerHTML='<div class="chat-msg-name chat-profile-link" onclick="openPublicProfileByName('+JSON.stringify(profileTarget).replace(/"/g,'&quot;')+')">'+nm+' '+profileTagHTML(m.profile_tag,true)+' <span style="font-size:8px;color:var(--accent);">ПРОФИЛЬ</span></div><div class="chat-msg-text">'+escapeHtml(m.message)+'</div><div class="chat-msg-time">'+time+'</div>';
   c.appendChild(div);
 }
 async function loadChatHistory(silent=false){
@@ -3314,7 +3328,7 @@ async function claimPvpResults(){
   };
   openPublicProfile=function(name,val,wins,races,cars,profile){
     const root=document.getElementById('public-profile-root');if(!root)return;const p=profile||{},wr=races?Math.round(wins/races*100):0,list=Array.isArray(cars)?cars:[].concat(cars||[]).filter(Boolean),ownedHtml=list.length?list.map(x=>'<span class="player-lb-car">'+escapeHtml(x)+'</span>').join(''):'<span class="muted-v9">Нет данных</span>',balance=Number(p.balance??val)||0,level=Number(p.level)||1,best=Number(p.best_0_100)||0,rating=Number(p.rating)||0,current=safeText(p.current_car_name,'',60)||carsDB.find(c=>String(c.id)===String(p.active_car_id))?.name||'Не указана',username=safeText(p.telegram_username,'',32),isSelf=p.id===state.playerId;
-    root.innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closePublicProfile()"><div class="public-profile public-profile-v9"><div class="pp-head"><div class="public-avatar">'+(p.photo_url?'<img src="'+escapeAttrLocal(p.photo_url)+'" alt="">':escapeHtml((name||'Г').charAt(0).toUpperCase()))+'</div><div><div class="pp-name-v9">'+escapeHtml(name)+'</div><div class="pp-meta-v9">РЕЙТИНГ '+rating+(username?' · @'+escapeHtml(username):'')+'</div></div></div><div class="pp-grid pp-grid-v9"><div class="pp-stat"><span>Победы</span><b>'+wins+'</b></div><div class="pp-stat"><span>Заезды</span><b>'+races+'</b></div><div class="pp-stat"><span>Процент побед</span><b>'+wr+'%</b></div><div class="pp-stat"><span>Лучший 0–100</span><b>'+(best?best.toFixed(2)+' с':'0')+'</b></div><div class="pp-stat"><span>Текущая машина</span><b>'+escapeHtml(current)+'</b></div><div class="pp-stat"><span>Уровень</span><b>'+level+'</b></div></div><div class="pp-stat pp-garage-v9"><span>Гараж</span><div class="player-lb-cars">'+ownedHtml+'</div></div>'+(!isSelf&&p.id?'<button class="btn btn-select" onclick="sendFriendRequestTo('+jsArg(p.id)+')">ДОБАВИТЬ В ДРУЗЬЯ</button>':'')+'<button class="btn btn-ghost" onclick="closePublicProfile()">ЗАКРЫТЬ</button></div></div>';
+    root.innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closePublicProfile()"><div class="public-profile public-profile-v9"><div class="pp-head"><div class="public-avatar">'+(p.photo_url?'<img src="'+escapeAttrLocal(p.photo_url)+'" alt="">':escapeHtml((name||'Г').charAt(0).toUpperCase()))+'</div><div><div class="pp-name-v9">'+escapeHtml(name)+' '+profileTagHTML(p.profile_tag)+'</div><div class="pp-meta-v9">РЕЙТИНГ '+rating+(username?' · @'+escapeHtml(username):'')+'</div></div></div><div class="pp-grid pp-grid-v9"><div class="pp-stat"><span>Победы</span><b>'+wins+'</b></div><div class="pp-stat"><span>Заезды</span><b>'+races+'</b></div><div class="pp-stat"><span>Процент побед</span><b>'+wr+'%</b></div><div class="pp-stat"><span>Лучший 0–100</span><b>'+(best?best.toFixed(2)+' с':'0')+'</b></div><div class="pp-stat"><span>Текущая машина</span><b>'+escapeHtml(current)+'</b></div><div class="pp-stat"><span>Уровень</span><b>'+level+'</b></div></div><div class="pp-stat pp-garage-v9"><span>Гараж</span><div class="player-lb-cars">'+ownedHtml+'</div></div>'+(!isSelf&&p.id?'<button class="btn btn-select" onclick="sendFriendRequestTo('+jsArg(p.id)+')">ДОБАВИТЬ В ДРУЗЬЯ</button>':'')+'<button class="btn btn-ghost" onclick="closePublicProfile()">ЗАКРЫТЬ</button></div></div>';
   };
   openPublicProfileData=function(p){const owned=Array.isArray(p.owned_cars)?p.owned_cars:[],cars=owned.map(id=>carsDB.find(c=>String(c.id)===String(id))).filter(Boolean);openPublicProfile(p.name,p.total_earned||0,p.wins||0,p.races||0,cars.map(c=>c.name),p);};
 
@@ -3374,7 +3388,7 @@ async function claimPvpResults(){
       const payload=await socialApi('/api/social/clans','GET',null,'Кланы'),membership=payload?.membership||null,invites=Array.isArray(payload?.invites)?payload.invites:[],members=Array.isArray(payload?.members)?payload.members:[],lb=payload?.clanRank||null;clanLeaderboardCache=Array.isArray(payload?.leaderboard)?payload.leaderboard:[];
       if(!membership){root.innerHTML='<div class="clan-create-v9"><b>СОЗДАТЬ КЛАН</b><span>Название уникальное. После создания ты становишься лидером.</span><input id="clan-name-v9" maxlength="24" placeholder="Название клана"><button class="btn btn-select" onclick="createClanV9()">СОЗДАТЬ</button></div>'+renderClanInvites(invites);currentClanDivision='Мантика';loadClanLeaderboardV9();return;}
       const clan=relationOne(membership.clans);currentClanDivision=lb?.division||'Мантика';const isOwner=membership.role==='owner';
-      root.innerHTML='<div class="clan-hero-v9"><div><span>КЛАН</span><b>'+escapeHtml(clan.name||'Клан')+'</b><small>'+escapeHtml(currentClanDivision)+' · '+fmt(lb?.score||0)+' очк. · #'+(lb?.global_rank||'—')+'</small></div><button class="btn btn-ghost" onclick="leaveClanV9()">ВЫЙТИ</button></div>'+(isOwner?'<div class="social-search-v9"><input id="clan-invite-v9" maxlength="90" placeholder="ID или @login друга"><button class="btn btn-select" onclick="inviteClanV9()">ПРИГЛАСИТЬ</button></div>':'')+'<div class="v9-section-head"><b>СОСТАВ</b><span>'+members.length+'</span></div>'+members.map(m=>{const profile=relationOne(m.player_profiles);return '<div class="clan-member-v9"><div><b>'+escapeHtml(m.player_name)+'</b><span>'+escapeHtml(({owner:'ВЛАДЕЛЕЦ',officer:'ОФИЦЕР',member:'УЧАСТНИК'}[String(m.role||'member')]||'УЧАСТНИК'))+' · РЕЙТИНГ '+(profile?.rating||0)+' · '+escapeHtml(profile?.current_car_name||'машина не указана')+'</span></div>'+(isOwner&&m.role!=='owner'?'<button class="btn btn-ghost" onclick="kickClanMemberV9('+jsArg(m.member_uid)+')">ИСКЛЮЧИТЬ</button>':'')+'</div>';}).join('')+renderClanInvites(invites);loadClanLeaderboardV9();
+      root.innerHTML='<div class="clan-hero-v9"><div><span>КЛАН</span><b>'+escapeHtml(clan.name||'Клан')+'</b><small>'+escapeHtml(currentClanDivision)+' · '+fmt(lb?.score||0)+' очк. · #'+(lb?.global_rank||'—')+'</small></div><button class="btn btn-ghost" onclick="leaveClanV9()">ВЫЙТИ</button></div>'+(isOwner?'<div class="social-search-v9"><input id="clan-invite-v9" maxlength="90" placeholder="ID или @login друга"><button class="btn btn-select" onclick="inviteClanV9()">ПРИГЛАСИТЬ</button></div>':'')+'<div class="v9-section-head"><b>СОСТАВ</b><span>'+members.length+'</span></div>'+members.map(m=>{const profile=relationOne(m.player_profiles);return '<div class="clan-member-v9"><div><b>'+escapeHtml(m.player_name)+' '+profileTagHTML(profile?.profile_tag,true)+'</b><span>'+escapeHtml(({owner:'ВЛАДЕЛЕЦ',officer:'ОФИЦЕР',member:'УЧАСТНИК'}[String(m.role||'member')]||'УЧАСТНИК'))+' · РЕЙТИНГ '+(profile?.rating||0)+' · '+escapeHtml(profile?.current_car_name||'машина не указана')+'</span></div>'+(isOwner&&m.role!=='owner'?'<button class="btn btn-ghost" onclick="kickClanMemberV9('+jsArg(m.member_uid)+')">ИСКЛЮЧИТЬ</button>':'')+'</div>';}).join('')+renderClanInvites(invites);loadClanLeaderboardV9();
     }catch(e){console.warn('clan unavailable',e);root.innerHTML='<div class="empty-note">Клановый раздел сейчас недоступен.</div>';}
   }
   function renderClanInvites(invites){if(!invites.length)return'';return '<div class="v9-section-head"><b>ПРИГЛАШЕНИЯ</b><span>'+invites.length+'</span></div>'+invites.map(i=>{const clan=relationOne(i.clans);return '<div class="social-row-v9"><div><b>'+escapeHtml(clan?.name||'Клан')+'</b><span>Пригласил: '+escapeHtml(i.inviter_name||'Игрок')+'</span></div><button class="btn btn-select" onclick="acceptClanInviteV9('+i.id+')">ВСТУПИТЬ</button></div>';}).join('');}
@@ -3647,8 +3661,10 @@ if (typeof window !== 'undefined') {
       state.stats.wins=Math.max(0,Number(serverPlayer.wins)||0);
       state.stats.losses=Math.max(0,Number(serverPlayer.losses)||0);
       state.stats.totalEarned=Math.max(0,Number(serverPlayer.total_earned)||0);
+      state.profileTag=normalizeProfileTag(serverPlayer.profile_tag);
       saveState();
     }
+    state.profileTag=normalizeProfileTag(serverPlayer.profile_tag);
   }
   if(Array.isArray(bootstrap.cars) && bootstrap.cars.length){
     const normalized=bootstrap.cars.filter((c:any)=>c&&Number.isInteger(Number(c.id))&&Number(c.id)>=1&&Number(c.id)<=25&&/^\/assets\/cars\/[0-9]+\.webp$/i.test(String(c.image||''))).map((c:any)=>({

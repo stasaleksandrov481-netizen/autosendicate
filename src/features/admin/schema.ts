@@ -5,7 +5,9 @@ export const playerAdminActionSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('addBalance'), playerId: z.string().regex(/^tg_\d{1,24}$/), amount: z.number().int().min(-1_000_000_000).max(1_000_000_000) }),
   z.object({ action: z.literal('ban'), playerId: z.string().regex(/^tg_\d{1,24}$/), reason: z.string().trim().min(1).max(240) }),
   z.object({ action: z.literal('unban'), playerId: z.string().regex(/^tg_\d{1,24}$/) }),
-  z.object({ action: z.literal('grantCar'), playerId: z.string().regex(/^tg_\d{1,24}$/), carId: z.number().int().min(1).max(100000) })
+  z.object({ action: z.literal('grantCar'), playerId: z.string().regex(/^tg_\d{1,24}$/), carId: z.number().int().min(1).max(100000) }),
+  z.object({ action: z.literal('setTag'), playerId: z.string().regex(/^tg_\d{1,24}$/), tag: z.object({ key: z.string().trim().regex(/^[a-z0-9_-]{1,40}$/), label: z.string().trim().min(1).max(40), emoji: z.string().trim().max(8), background: z.string().regex(/^#[0-9A-Fa-f]{6}$/), foreground: z.string().regex(/^#[0-9A-Fa-f]{6}$/) }) }),
+  z.object({ action: z.literal('clearTag'), playerId: z.string().regex(/^tg_\d{1,24}$/) })
 ]);
 
 export const adminCarSchema = z.object({

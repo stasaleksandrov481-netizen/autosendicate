@@ -1234,3 +1234,15 @@ body.race-mode .rival-intro{padding:5px!important;margin:0!important}.rival-intr
 body.race-mode .map-car{transition:left .085s linear!important}
 body.race-mode .dial-needle{transition:transform .075s linear!important}
 body.race-mode .race-low-fx .speed-effects,body.race-mode .race-low-fx .race-fx-canvas{display:none!important}
+
+/* ===== PROFILE TAGS / COMMUNITY ROLES ===== */
+.profile-tag-v13{display:inline-flex;align-items:center;gap:4px;vertical-align:middle;margin-left:5px;padding:4px 9px;border-radius:999px;background:var(--tag-bg,#FACC15);color:var(--tag-fg,#171717);border:1px solid var(--tag-bg,#FACC15);font-size:9px;font-weight:1000;line-height:1;letter-spacing:.15px;box-shadow:0 4px 14px rgba(0,0,0,.16);white-space:nowrap;max-width:220px;overflow:hidden;text-overflow:ellipsis;}
+.profile-tag-v13.compact{font-size:7px;padding:3px 6px;margin-left:4px;box-shadow:none;vertical-align:1px;}
+.profile-tag-emoji{font-size:10px;line-height:1;}
+.profile-tag-host-v13{min-height:0;margin-top:6px;}
+.profile-tag-host-v13 .profile-tag-v13{margin-left:0;font-size:8px;padding:5px 9px;}
+.pp-name-v9 .profile-tag-v13{font-size:7px;padding:3px 6px;}
+.chat-msg-name .profile-tag-v13{position:relative;top:-1px;}
+.lb-name .profile-tag-v13{position:relative;top:-1px;}
+.admin-table em{font-style:normal;display:inline-flex;align-items:center;gap:4px;margin-left:5px;padding:4px 7px;border-radius:999px;font-size:8px;font-weight:1000;line-height:1;}
+@media (max-width:560px){.profile-tag-v13{max-width:170px;font-size:8px}.profile-tag-v13.compact{max-width:135px}.profile-tag-host-v13{margin-top:5px}}

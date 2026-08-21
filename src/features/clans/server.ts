@@ -63,7 +63,7 @@ export async function getClanView(playerId: string) {
     const [{ data: memberRows, error: memberError }, { data: rankRow, error: rankError }] = await Promise.all([
       supabase
         .from('clan_members')
-        .select('member_uid,player_id,player_name,role,joined_at,player_profiles(rating,wins,current_car_name)')
+        .select('member_uid,player_id,player_name,role,joined_at,player_profiles(rating,wins,current_car_name,profile_tag)')
         .eq('clan_id', membership.clan_id)
         .order('joined_at', { ascending: true }),
       supabase

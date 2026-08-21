@@ -106,7 +106,7 @@ export async function getAdminStats() {
 
 export async function listAdminPlayers(query = '') {
   const s = createServerSupabase();
-  let request = s.from('player_profiles').select('id,name,telegram_username,level,balance,races,wins,losses,rating,current_car_name,last_seen,banned_at,ban_reason,owned_cars').order('last_seen', { ascending: false }).limit(200);
+  let request = s.from('player_profiles').select('id,name,telegram_username,level,balance,races,wins,losses,rating,current_car_name,last_seen,banned_at,ban_reason,owned_cars,profile_tag').order('last_seen', { ascending: false }).limit(200);
   const q = query.trim().replace(/[^A-Za-zА-Яа-яЁё0-9@._ -]/g, '').slice(0, 64);
   if (q) request = request.or(`id.ilike.%${q}%,name.ilike.%${q}%,telegram_username.ilike.%${q}%`);
   const { data, error } = await request;
@@ -116,6 +116,13 @@ export async function listAdminPlayers(query = '') {
 
 export async function applyPlayerAdminAction(admin: GameSession, action: PlayerAction) {
   const s = createServerSupabase();
+  if (action.action === 'setTag' || action.action === 'clearTag') {
+    const profileTag = action.action === 'setTag' ? action.tag : null;
+    const { data, error } = await s.from('player_profiles').update({ profile_tag: profileTag }).eq('id', action.playerId).select('id,profile_tag').single();
+    if (error) throw error;
+    await audit(admin, `player.${action.action}`, 'player', action.playerId, action);
+    return data;
+  }
   const { data, error } = await s.rpc('autosyndicate_admin_player_action_v11', {
     p_admin_player_id: admin.playerId,
     p_player_id: action.playerId,
