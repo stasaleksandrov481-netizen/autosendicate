@@ -39,13 +39,6 @@ async function isDuelTrigger(text: string) {
 
 
 
-function publicCarImageUrl(imagePath: string | null | undefined) {
-  const env = getServerEnv();
-  const base = env.NEXT_PUBLIC_APP_URL.replace(/\/$/, '');
-  const path = String(imagePath || '/assets/cars/1.webp').startsWith('/') ? String(imagePath || '/assets/cars/1.webp') : `/${imagePath}`;
-  return `${base}${path}`;
-}
-
 async function handleInlineQuery(query: TgInlineQuery) {
   const s = createServerSupabase();
   const playerId = playerIdFromInline(query.from.id);
@@ -63,14 +56,16 @@ async function handleInlineQuery(query: TgInlineQuery) {
     await answerTelegramInlineQuery(query.id, [{ type:'article', id:'no-car', title:'Нет машины в гараже', description:'Заберите первый автомобиль в Mini App.', input_message_content:{message_text:'🚗 У меня пока нет машины. Захожу в AutoSyndicate за первым авто.'}, reply_markup:{inline_keyboard:[[{text:'🚗 Забрать тачку и приехать',url:appUrl}]]} }], {cacheTime:0,isPersonal:true});
     return;
   }
-  const { data: car, error: carError } = await s.from('game_cars_v11').select('id,name,image_path,power').eq('id',carId).eq('active',true).maybeSingle();
+  const { data: car, error: carError } = await s.from('game_cars_v11').select('id,name,image_path,power,tier,category,flavor').eq('id',carId).eq('active',true).maybeSingle();
   if (carError) throw carError;
   if (!car) throw new Error('active car not found');
   const username = profile.telegram_username ? `@${profile.telegram_username}` : profile.name || query.from.first_name;
-  const plate = profile.active_plate?.text ? `\n🔖 ${String(profile.active_plate.text)}` : '';
-  const caption = `<b>🏎️ ВЫЗОВ НА 402m</b>\n\n<b>${safeHtml(username)}</b>\n${safeHtml(car.name)} • ${Number(car.power)} л.с.${plate}\n\n⚡ Кто быстрее — тот и хозяин улиц.\nВыбирай соперника и принимай вызов.`;
-  const photoUrl = publicCarImageUrl(car.image_path);
-  const result = { type:'photo', id:`duel_${query.from.id}_${car.id}`, photo_url:photoUrl, thumbnail_url:photoUrl, photo_width:1024, photo_height:576, title:`Дуэль — ${car.name}`, caption, parse_mode:'HTML', reply_markup:{inline_keyboard:[[{text:'⚡ Принять вызов',callback_data:`duel_inline_accept:${query.from.id}:${car.id}`}],[{text:'🎯 Личный вызов',switch_inline_query_current_chat:'duel '},{text:'🌐 Вызов в чат',switch_inline_query:'duel '}]]} };
+  const plate = profile.active_plate?.text ? `\n🔖 Номер: ${safeHtml(String(profile.active_plate.text))}` : '';
+  const tierLine = car.tier ? `\n🏷️ Класс: ${safeHtml(String(car.tier))}` : '';
+  const categoryLine = car.category ? `\n📂 Категория: ${safeHtml(String(car.category))}` : '';
+  const flavorLine = car.flavor ? `\n\n<i>${safeHtml(String(car.flavor))}</i>` : '';
+  const caption = `<b>🏎️ ВЫЗОВ НА 402m</b>\n\n<b>${safeHtml(username)}</b>\n<b>${safeHtml(car.name)}</b>\n⚙️ Мощность: ${Number(car.power)} л.с.${tierLine}${categoryLine}${plate}${flavorLine}\n\n⚡ Кто быстрее — тот и хозяин улиц.\nВыбирай соперника и принимай вызов.`;
+  const result = { type:'article', id:`duel_${query.from.id}_${car.id}`, title:`⚡ Вызов на дуэль — ${car.name}`, description:`${car.power} л.с. • ${car.tier || ''}${plate ? ' • есть номер' : ''}`, input_message_content:{ message_text:caption, parse_mode:'HTML' }, reply_markup:{inline_keyboard:[[{text:'⚡ Принять вызов',callback_data:`duel_inline_accept:${query.from.id}:${car.id}`}],[{text:'🎯 Личный вызов',switch_inline_query_current_chat:'duel '},{text:'🌐 Вызов в чат',switch_inline_query:'duel '}]]} };
   await answerTelegramInlineQuery(query.id, [result], {cacheTime:0,isPersonal:true});
 }
 function playerIdFromInline(id:number){ return `tg_${id}`; }
