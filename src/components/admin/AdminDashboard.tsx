@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { bootstrapSecureSession } from '@/features/auth/client';
 
-type Tab = 'overview' | 'players' | 'cars' | 'opponents' | 'bot' | 'settings';
+type Tab = 'overview' | 'players' | 'tags' | 'cars' | 'opponents' | 'bot' | 'settings';
 type JsonRecord = Record<string, unknown>;
 
 interface AdminPlayer {
@@ -245,7 +245,7 @@ export function AdminDashboard() {
 
   if (!ready) return <main className="admin-root"><div className="admin-auth-card"><b>AUTOSYNDICATE CONTROL</b><span>{notice || 'Проверка Telegram-администратора…'}</span></div></main>;
 
-  const nav: Array<[Tab, string]> = [['overview','Обзор'],['players','Игроки'],['cars','Машины'],['opponents','Соперники'],['bot','Telegram Bot'],['settings','Настройки']];
+  const nav: Array<[Tab, string]> = [['overview','Обзор'],['players','Игроки'],['tags','🏷 Теги'],['cars','Машины'],['opponents','Соперники'],['bot','Telegram Bot'],['settings','Настройки']];
 
   return <main className="admin-root">
     <header className="admin-header"><div><b>AUTOSYNDICATE</b><span>CONTROL CENTER v12</span></div><a href="/">В игру</a></header>
@@ -314,6 +314,23 @@ export function AdminDashboard() {
                 }}>Тег</button>
                 {player.profile_tag && <button onClick={() => void playerAction({ action: 'clearTag', playerId: player.id })}>Снять тег</button>}
                 <button className={player.banned_at ? 'ok' : 'danger'} onClick={() => player.banned_at ? void playerAction({ action: 'unban', playerId: player.id }) : void playerAction({ action: 'ban', playerId: player.id, reason: window.prompt('Причина бана', 'Нарушение правил') || 'Нарушение правил' })}>{player.banned_at ? 'Разбан' : 'Бан'}</button>
+              </div></td>
+            </tr>)}
+          </tbody></table></div>
+        </>}
+
+        {tab === 'tags' && <>
+          <div className="admin-title"><div><span>Профили игроков</span><h1>🏷 Теги игроков</h1></div><b>{players.filter((player) => player.profile_tag).length} назначено</b></div>
+          <div className="admin-panel" style={{ marginBottom: 16 }}><h2>Быстрое назначение</h2><p style={{ marginTop: 0, color: 'var(--text-muted)' }}>Выбери игрока и выдай ему форумный статус. Изменение сразу сохраняется в профиле и используется во всех местах, где отображается имя игрока.</p></div>
+          <input className="admin-search" placeholder="Найти игрока для выдачи тега" value={query} onChange={(event) => setQuery(event.target.value)} />
+          <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Игрок</th><th>Текущий тег</th><th>Выдать тег</th></tr></thead><tbody>
+            {filteredPlayers.map((player) => <tr key={player.id}>
+              <td><b>{player.name}</b><small>{player.id}{player.telegram_username ? ` · @${player.telegram_username}` : ''}</small></td>
+              <td>{player.profile_tag ? <em style={{ background: player.profile_tag.background, color: player.profile_tag.foreground, borderColor: player.profile_tag.background, display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 9px', borderRadius: 999, fontStyle: 'normal', fontWeight: 900 }}>{player.profile_tag.emoji} {player.profile_tag.label}</em> : <span style={{ color: 'var(--text-muted)' }}>Без тега</span>}</td>
+              <td><div className="admin-actions">
+                {PLAYER_TAG_PRESETS.map((tag) => <button key={tag.key} title={tag.label} onClick={() => void playerAction({ action: 'setTag', playerId: player.id, tag })}>{tag.emoji} {tag.label}</button>)}
+                <button onClick={() => { const label = window.prompt('Название тега', player.profile_tag?.label || 'Особый статус')?.trim(); if (!label) return; const emoji = window.prompt('Смайлик тега', player.profile_tag?.emoji || '✦')?.trim() || '✦'; const background = window.prompt('Фон тега, HEX', player.profile_tag?.background || '#FACC15')?.trim() || '#FACC15'; const foreground = window.prompt('Цвет текста, HEX', player.profile_tag?.foreground || '#171717')?.trim() || '#171717'; void playerAction({ action: 'setTag', playerId: player.id, tag: { key: 'custom_' + Date.now(), label, emoji, background, foreground } }); }}>Свой тег</button>
+                {player.profile_tag && <button className="danger" onClick={() => void playerAction({ action: 'clearTag', playerId: player.id })}>Снять</button>}
               </div></td>
             </tr>)}
           </tbody></table></div>
