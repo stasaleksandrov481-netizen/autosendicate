@@ -2,6 +2,17 @@ import 'server-only';
 import { getServerEnv } from '@/lib/env';
 
 interface InlineButton { text: string; callback_data?: string; url?: string; switch_inline_query?: string; switch_inline_query_current_chat?: string; }
+export interface TelegramInlinePhotoResult {
+  type: 'photo';
+  id: string;
+  photo_url: string;
+  thumbnail_url?: string;
+  title?: string;
+  description?: string;
+  caption?: string;
+  parse_mode?: 'HTML' | 'MarkdownV2';
+  reply_markup?: { inline_keyboard: InlineButton[][] };
+}
 interface BotInfo {
   id: number;
   username?: string;

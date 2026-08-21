@@ -36,12 +36,12 @@ async function currentCar(telegramId: number) {
 export async function handleInlineDuelQuery(query: TgInlineQuery) {
   const selected = await currentCar(query.from.id);
   if (!selected) {
-    await answerTelegramInlineQuery(query.id, [], 0);
+    await answerTelegramInlineQuery(query.id, [], { cacheTime: 0 });
     return;
   }
   const image = publicImage(selected.car.image_path);
   if (!image) {
-    await answerTelegramInlineQuery(query.id, [], 0);
+    await answerTelegramInlineQuery(query.id, [], { cacheTime: 0 });
     return;
   }
   const plate = selected.plate && typeof selected.plate === 'object' ? String((selected.plate as any).text ?? '') : '';
@@ -57,7 +57,7 @@ export async function handleInlineDuelQuery(query: TgInlineQuery) {
       [{ text: '👤 Персональная дуэль', switch_inline_query_current_chat: 'duel' }, { text: '🌐 Открытый вызов в чат', switch_inline_query: 'duel' }]
     ] }
   };
-  await answerTelegramInlineQuery(query.id, [result], 0);
+  await answerTelegramInlineQuery(query.id, [result], { cacheTime: 0 });
 }
 
 async function createInlineRoom(challenger: TgUser, opponent: TgUser, message: TgMessage) {
