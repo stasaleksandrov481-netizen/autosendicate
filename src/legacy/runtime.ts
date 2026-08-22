@@ -3243,12 +3243,15 @@ async function claimPvpResults(){
       if(!response.ok)throw new Error(payload?.error||('pending cases rejected '+response.status));
       const data=Array.isArray(payload?.data)?payload.data:[];
       for(const row of data){
-        if(state.caseAppliedRolls.includes(String(row.id))){await markCaseClaimed(row.id);continue;}
-        const price=intNumber(row.price,0,0,100000),cs=CASES_V9[row.case_id];if(!cs)continue;
-        if(state.coins<price)continue;
-        state.coins-=price;state.stats.totalSpent+=price;state.stats.casesOpened++;
-        const prize=normalizeServerPrize(row.prize);grantServerCasePrize(prize,cs,String(row.id));await markCaseClaimed(row.id);
-        showToast('Восстановлен незавершённый кейс: '+prize.label);
+        const rollId=String(row.id);
+        if(state.caseAppliedRolls.includes(rollId)){await markCaseClaimed(rollId);continue;}
+        const cs=CASES_V9[row.case_id];if(!cs)continue;
+        // Prize was already paid when /api/cases/roll succeeded. Do NOT charge again —
+        // only grant the missing reward and mark claimed.
+        const prize=normalizeServerPrize(row.prize);
+        const granted=grantServerCasePrize(prize,cs,rollId);
+        await markCaseClaimed(rollId);
+        if(granted) showToast('Награда из кейса восстановлена: '+prize.label);
       }
     }catch(e){console.warn('case reconcile',e?.message||e);}
   }
@@ -3268,14 +3271,32 @@ async function claimPvpResults(){
       const payload=apiPayload;const rollId=String(payload?.roll_id||payload?.id||''),prize=normalizeServerPrize(payload?.prize||{}),price=intNumber(payload?.price,cs.price,1,100000);
       if(!rollId)throw new Error('server roll id missing');if(state.coins<price)throw new Error('Недостаточно SYND для подтверждения server roll');
       state.coins-=price;state.stats.totalSpent+=price;state.stats.casesOpened++;saveState();updateHeader();
+      // Grant prize immediately after server confirms — animation is visual only.
+      // This prevents "stuck loading" and delayed "reward restored" toasts.
+      grantServerCasePrize(prize,cs,rollId);
+      void markCaseClaimed(rollId);
       const strip=[];for(let i=0;i<CASE_REEL_LENGTH;i++)strip.push(i===CASE_TARGET_INDEX?prize:visualPrize(cs));
       ensureCaseModalV9();const modal=document.getElementById('case-open-modal');modal.classList.add('show');modal.innerHTML='<div class="case-open-shell case-premium-v126"><div class="case-open-head"><div><small>КЕЙС СИНДИКАТА</small><span>'+cs.name+'</span></div><b>ОТКРЫТИЕ</b></div><div class="case-reel-caption"><span>НАГРАДА ЗАФИКСИРОВАНА</span><i></i><span>ПОД УКАЗАТЕЛЕМ</span></div><div class="case-reel-window" id="case-reel-window"><div class="case-pointer-v9"><i></i></div><div class="case-center-line"></div><div class="case-reel-track" id="case-reel-track">'+strip.map(v9CaseItemHtml).join('')+'</div></div><div class="case-open-status" id="case-open-status"><span class="case-spinner"></span><b>ЛЕНТА ЗАПУЩЕНА</b><small>Результат уже сохранён сервером</small></div></div>';
       const track=document.getElementById('case-reel-track'),win=document.getElementById('case-reel-window');
-      const finish=async()=>{if(state.caseOpening!==true)return;grantServerCasePrize(prize,cs,rollId);await markCaseClaimed(rollId);const st=document.getElementById('case-open-status');if(st){st.classList.add('case-result-ready');st.innerHTML='<span class="rar-'+prize.rarity+'">'+RARITY_LABEL_V9[prize.rarity]+'</span><b>'+escapeHtml(prize.label)+'</b><small>Награда добавлена в коллекцию</small><button class="btn btn-select" onclick="closeCaseModal()">ЗАБРАТЬ</button>';}state.caseOpening=false;saveState();renderCases();};
+      const finish=()=>{
+        if(state.caseOpening!==true)return;
+        const st=document.getElementById('case-open-status');
+        if(st){st.classList.add('case-result-ready');st.innerHTML='<span class="rar-'+prize.rarity+'">'+RARITY_LABEL_V9[prize.rarity]+'</span><b>'+escapeHtml(prize.label)+'</b><small>Награда уже в коллекции</small><button class="btn btn-select" onclick="closeCaseModal()">ЗАБРАТЬ</button>';}
+        state.caseOpening=false;saveState();renderCases();
+      };
       requestAnimationFrame(()=>requestAnimationFrame(()=>{
-        const item=track?.children?.[CASE_TARGET_INDEX];if(!track||!win||!item){finish();return;}
-        const target=win.clientWidth/2-(item.offsetLeft+item.offsetWidth/2);track.style.transform='translate3d('+target+'px,0,0)';
-        let done=false;const complete=()=>{if(done)return;done=true;finish();};track.addEventListener('transitionend',complete,{once:true});setTimeout(complete,3400);
+        try{
+          const item=track?.children?.[CASE_TARGET_INDEX] as HTMLElement|undefined;
+          if(!track||!win||!item){finish();return;}
+          const target=win.clientWidth/2-(item.offsetLeft+item.offsetWidth/2);
+          track.style.transition='transform 1.8s cubic-bezier(.15,.8,.25,1)';
+          track.style.transform='translate3d('+target+'px,0,0)';
+          let done=false;
+          const complete=()=>{if(done)return;done=true;finish();};
+          track.addEventListener('transitionend',complete,{once:true});
+          // Hard fallback — never hang longer than ~2.2s
+          setTimeout(complete,2200);
+        }catch(_){finish();}
       }));
     }catch(e){state.caseOpening=false;console.warn('case roll failed',e);showToast('Не удалось открыть кейс. Попробуйте ещё раз.');renderCases();}
   };
@@ -3857,12 +3878,16 @@ if (typeof window !== 'undefined') {
   function chipAdd(n,reason){
     n=Math.max(0,Math.floor(Number(n)||0)); if(!n)return;
     state.chips+=n;state.chipLedger.push({delta:n,reason,ts:Date.now()});state.chipLedger=state.chipLedger.slice(-100);
-    updateHeader();saveState();
+    try{updateHeaderFeature();}catch(_){updateHeader();}
+    saveState();
   }
   function chipSpend(n,reason){
     n=Math.max(0,Math.floor(Number(n)||0));
     if(state.chips<n){showToast('Недостаточно Чипов');return false;}
-    state.chips-=n;state.chipLedger.push({delta:-n,reason,ts:Date.now()});state.chipLedger=state.chipLedger.slice(-100);return true;
+    state.chips-=n;state.chipLedger.push({delta:-n,reason,ts:Date.now()});state.chipLedger=state.chipLedger.slice(-100);
+    try{updateHeaderFeature();}catch(_){updateHeader();}
+    saveState();
+    return true;
   }
   function chipIcon(){return '<span class="chip-currency">◈</span>'}
   function updateHeaderFeature(){
@@ -3938,18 +3963,35 @@ if (typeof window !== 'undefined') {
   }
   function startStreetChaos(){
     const car=carsDB.find((x:any)=>x.id===state.activeCarId);if(!car)return;
-    const bots=opponentsDB.filter((o:any)=>!o.boss).slice().sort(()=>Math.random()-.5).slice(0,3).map((o:any)=>rivalInstance(o));
-    const lead=modeOpp('Уличный хаос',Math.max(...bots.map((x:any)=>x.power)),Math.round(ECONOMY_V12_6.raceReward({power:getEffectivePower(car)})*1.65));
-    (lead as any).chaosBots=bots;(lead as any).chaos=true;
+    const pool=opponentsDB.filter((o:any)=>!o.boss).slice().sort(()=>Math.random()-.5);
+    const bots=[];
+    for(let i=0;i<3;i++){
+      if(pool[i]) bots.push(rivalInstance(pool[i]));
+      else bots.push(modeOpp(dynName({name:'BOT'},i), Math.round(getEffectivePower(car)*(0.82+i*0.06)), 0));
+    }
+    const leadPower=Math.max(getEffectivePower(car)*0.95, ...bots.map((x:any)=>Number(x.power)||0));
+    const lead=modeOpp('Уличный хаос', leadPower, Math.round(ECONOMY_V12_6.raceReward({power:getEffectivePower(car)})*1.65));
+    (lead as any).chaosBots=bots;(lead as any).chaos=true;(lead as any).lanes=4;
     const c=startFeatureRace(lead,'chaos');
-    if(c){c.mode='chaos';c.chaos=true;c.chaosBots=bots;c.lanes=4;c.policeLane=Math.random()<.30;c.radarChance=0;renderRaceBrief();}
+    if(c){
+      c.mode='chaos';c.chaos=true;c.chaosBots=bots;c.lanes=4;c.policeLane=Math.random()<.30;c.radarChance=0;
+      // ensure flags survive any later prepareRace renames
+      if(c.opp){(c.opp as any).chaos=true;(c.opp as any).chaosBots=bots;(c.opp as any).lanes=4;}
+      renderRaceBrief();
+    }
   }
   function startSpecialChase(){
     const car=carsDB.find((x:any)=>x.id===state.activeCarId);if(!car)return;
-    const cop=modeOpp('ДПС · Патруль №'+(100+Math.floor(Math.random()*900)),getEffectivePower(car)*1.08,0);
-    (cop as any).chase=true;(cop as any).reward=0;
+    const patrolNo=100+Math.floor(Math.random()*900);
+    const cop=modeOpp('ДПС · Патруль №'+patrolNo, getEffectivePower(car)*1.08, 0);
+    (cop as any).chase=true;(cop as any).reward=0;(cop as any).isPolice=true;(cop as any).name='🚔 ДПС · Патруль №'+patrolNo;
     const c=startFeatureRace(cop,'chase');
-    if(c){c.mode='chase';c.lanes=3;c.chase=true;c.chipsReward=8+Math.floor(Math.random()*17);c.radarChance=0;renderRaceBrief();}
+    if(c){
+      c.mode='chase';c.lanes=2;c.chase=true;c.isPolice=true;
+      c.chipsReward=8+Math.floor(Math.random()*17);c.radarChance=0;
+      if(c.opp){(c.opp as any).chase=true;(c.opp as any).isPolice=true;(c.opp as any).reward=0;(c.opp as any).name='🚔 ДПС · Патруль №'+patrolNo;}
+      renderRaceBrief();
+    }
   }
   function startHardcoreRace(){
     const list=opponentsDB.filter((o:any)=>!o.boss);if(!list.length)return;
@@ -4000,25 +4042,59 @@ if (typeof window !== 'undefined') {
   showRaceCockpit=function(){
     baseShowCockpit();
     const c=raceCtx;if(!c)return;
-    const map=document.querySelector('.race-map');if(!map)return;
-    const lanes=c.lanes||2;
+    // Recover chaos/chase flags from opponent if lost during prepareRace chain
+    if(!c.chaosBots && c.opp?.chaosBots) c.chaosBots=c.opp.chaosBots;
+    if(!c.chaos && (c.opp?.chaos || c.mode==='chaos')) {c.chaos=true;c.mode='chaos';c.lanes=c.lanes||4;}
+    if(!c.chase && (c.opp?.chase || c.opp?.isPolice || c.mode==='chase')) {c.chase=true;c.mode='chase';c.isPolice=true;c.lanes=c.lanes||2;}
+    if(c.chaos && !c.lanes) c.lanes=4;
+    if(c.chase && !c.lanes) c.lanes=2;
+
+    const map=document.querySelector('.race-map')||document.querySelector('#race-content .race-map');if(!map)return;
     const rows=[{name:state.playerName||'YOU',type:'player'}];
-    if(c.chaosBots)(c.chaosBots||[]).forEach((b:any)=>rows.push({name:b.name,type:'ai'}));
-    else rows.push({name:c.opp?.name||'BOT',type:'ai'});
-    if(c.chase)rows.push({name:'COP · ДПС',type:'cop'});
-    const html=rows.slice(0,lanes+(c.chase?0:0)).map((r:any,i:number)=>'<div class="dynamic-lane '+r.type+'" data-lane="'+i+'"><div class="lane-name">'+escapeHtml(r.name)+'</div><div class="lane-track"><i class="lane-fill"></i><b class="lane-car">'+(r.type==='cop'?'🚔':'🏎️')+'</b></div></div>').join('');
-    map.innerHTML='<div class="dynamic-track lanes-'+lanes+'">'+html+'</div>';
+    if(c.chase || c.isPolice){
+      rows.push({name:c.opp?.name||'🚔 ДПС',type:'cop'});
+    } else if(c.chaosBots && c.chaosBots.length){
+      c.chaosBots.forEach((b:any)=>rows.push({name:b.name||'BOT',type:'ai'}));
+    } else {
+      rows.push({name:c.opp?.name||'BOT',type:'ai'});
+    }
+    const lanes=Math.max(rows.length, c.lanes||rows.length);
+    c.lanes=lanes;
+    const html=rows.map((r:any,i:number)=>'<div class="dynamic-lane '+r.type+'" data-lane="'+i+'"><div class="lane-name">'+escapeHtml(r.name)+'</div><div class="lane-track"><i class="lane-fill"></i><b class="lane-car">'+(r.type==='cop'?'🚔':(r.type==='player'?'🚗':'🏎️'))+'</b></div></div>').join('');
+    map.innerHTML='<div class="dynamic-track lanes-'+lanes+(c.chase?' chase-mode':'')+(c.chaos?' chaos-mode':'')+'">'+html+'</div>';
     c.dynamicLaneRows=rows;
+
+    // Make classic rival car icon look like police in chase mode
+    if(c.chase || c.isPolice){
+      const ai=document.getElementById('map-ai');
+      if(ai) ai.innerHTML='<i class="race-car-shape rival has-image police-car" style="background:#1e3a5f;border:2px solid #ef4444;box-shadow:0 0 12px rgba(239,68,68,.55)"><b style="color:#fff;font-size:10px">ДПС</b></i>';
+      const badge=document.querySelector('#race-content .race-event-badge');
+      if(badge) badge.innerHTML='<span style="color:#ef4444">СПЕЦ-ПОГОНЯ · ДПС</span><b>УЙДИ ОТ ПАТРУЛЯ</b>';
+      const gapLeft=document.getElementById('gap-side-left');
+      if(gapLeft) gapLeft.textContent='ДПС';
+    }
   };
   const baseUpdateHUD=updateRaceHUD;
   updateRaceHUD=function(){
     baseUpdateHUD();
     const c=raceCtx;if(!c)return;
+    if(!c.chaosBots && c.opp?.chaosBots) c.chaosBots=c.opp.chaosBots;
+    if(!c.chase && (c.opp?.chase || c.opp?.isPolice || c.mode==='chase')) {c.chase=true;c.isPolice=true;}
     const track=document.querySelector('.dynamic-track');if(!track)return;
     const rows=[{distance:c.distance,name:state.playerName||'YOU',type:'player'}];
-    if(c.chaosBots)(c.chaosBots||[]).forEach((b:any,i:number)=>rows.push({distance:Math.max(0,(c.aiDistance||0)*(0.84+i*.055),),name:b.name,type:'ai'}));
-    else rows.push({distance:c.aiDistance||0,name:c.opp?.name||'BOT',type:'ai'});
-    if(c.chase)rows.push({distance:Math.min(c.trackLength,(c.aiDistance||0)+70),name:'COP · ДПС',type:'cop'});
+    if(c.chase || c.isPolice){
+      rows.push({distance:c.aiDistance||0,name:c.opp?.name||'🚔 ДПС',type:'cop'});
+    } else if(c.chaosBots && c.chaosBots.length){
+      const n=c.chaosBots.length;
+      c.chaosBots.forEach((b:any,i:number)=>{
+        // spread bots around primary AI distance so all 3 move independently on the map
+        const factor=0.78 + (i/(Math.max(1,n-1)||1))*0.22;
+        const jitter=((i+1)*17)%11;
+        rows.push({distance:Math.max(0, Math.min(c.trackLength, (c.aiDistance||0)*factor + jitter)), name:b.name||('BOT '+(i+1)), type:'ai'});
+      });
+    } else {
+      rows.push({distance:c.aiDistance||0,name:c.opp?.name||'BOT',type:'ai'});
+    }
     const laneEls=Array.from(track.querySelectorAll('.dynamic-lane')) as HTMLElement[];
     laneEls.forEach((lane:any,i:number)=>{
       const r=rows[i];if(!r)return;const fill=lane.querySelector('.lane-fill') as HTMLElement,car=lane.querySelector('.lane-car') as HTMLElement;
@@ -4026,11 +4102,14 @@ if (typeof window !== 'undefined') {
       if(car)car.style.left=Math.max(3,Math.min(97,r.distance/c.trackLength*100))+'%';
       const name=lane.querySelector('.lane-name') as HTMLElement;if(name)name.textContent=r.name;
     });
-    if(c.chase){
-      const copX=Math.min(c.trackLength,(c.aiDistance||0)+70);
-      if(copX>=c.distance){
+    if(c.chase || c.isPolice){
+      // In chase, police catching up means player is behind AI
+      if((c.aiDistance||0)>=c.distance && c.distance>30 && !c.finished){
         const playerLane=track.querySelector('.dynamic-lane.player') as HTMLElement;
-        if(playerLane&&!playerLane.classList.contains('busted')){playerLane.classList.add('busted');showAction('BUSTED · ДИСКВАЛИФИКАЦИЯ');}
+        if(playerLane&&!playerLane.classList.contains('busted')){
+          playerLane.classList.add('busted');
+          showAction('BUSTED · ДПС ДОГНАЛ');
+        }
       }
     }
   };
@@ -4038,15 +4117,34 @@ if (typeof window !== 'undefined') {
   // Special chase reward: successful escape clears heat and awards chips.
   const baseFinish=finishRace;
   finishRace=function(playerWins,c){
-    if(c?.chase){
-      if(c.aiDistance>=c.distance && c.distance<c.trackLength){baseFinish(false,c);return;}
+    const ctx=c||raceCtx;
+    // recover chase flag if it was lost
+    if(ctx && !ctx.chase && (ctx.opp?.chase || ctx.opp?.isPolice || ctx.mode==='chase' || ctx.isPolice)){
+      ctx.chase=true;ctx.isPolice=true;
+    }
+    if(ctx?.chase){
+      // Caught before finish line → loss, no chips
+      if(!playerWins || ((ctx.aiDistance||0)>=ctx.distance && ctx.distance<ctx.trackLength)){
+        baseFinish(false,ctx);
+        showToast('ДПС ДОГНАЛ · ЧИПЫ НЕ НАЧИСЛЕНЫ');
+        return;
+      }
       if(playerWins){
-        const reward=c.chipsReward||12;chipAdd(reward,'special_chase_escape');
+        const reward=Math.max(8, Number(ctx.chipsReward)||12);
+        chipAdd(reward,'special_chase_escape');
         state.heat=Math.max(0,(Number(state.heat)||0)-2);
+        try{updateHeaderFeature();}catch(_){}
         showToast('ПОБЕГ УДАЛСЯ · +'+reward+' ЧИПОВ · Heat −2');
+        // Patch result screen shortly after base finish renders
+        setTimeout(()=>{
+          const rewardEl=document.querySelector('#race-content .result-reward');
+          if(rewardEl) rewardEl.innerHTML='+'+reward+' ◈ CHIPS · Heat −2';
+          const title=document.querySelector('#race-content .result-title');
+          if(title) title.textContent=' ПОБЕГ ОТ ДПС';
+        },40);
       }
     }
-    baseFinish(playerWins,c);
+    baseFinish(playerWins,ctx);
   };
 
   // Dual-currency tuning: preserve existing SYND price, add chip price.
@@ -4179,9 +4277,12 @@ if (typeof window !== 'undefined') {
   prepareRace=function(target:any,mode:any){
     featurePrepareRace(target,mode);
     const c=raceCtx;if(!c)return;
-    if(mode!=='pvp' && !c.chase){
+    // Preserve feature-mode flags from opponent object
+    if(c.opp?.chase || c.opp?.isPolice){c.chase=true;c.isPolice=true;c.mode=c.mode||'chase';}
+    if(c.opp?.chaos || c.opp?.chaosBots){c.chaos=true;c.mode=c.mode||'chaos';c.chaosBots=c.opp.chaosBots||c.chaosBots;c.lanes=c.lanes||4;}
+    if(mode!=='pvp' && !c.chase && !c.opp?.isPolice){
       const original=c.opp;
-      if(original){
+      if(original && !original.chase && !original.isPolice && !original.chaos){
         const boss=!!original.boss;
         c.opp={...original,name:boss?dynName(original,0,true):dynName(original),status:boss?'УНИКАЛЬНЫЙ БОСС':rand(BOT_STATUS)};
       }
@@ -4227,6 +4328,31 @@ if (typeof window !== 'undefined') {
       });
     },0);
   };
+
+  // Race brief: show CHIPS reward for special chase instead of 0 SYND
+  const baseRenderRaceBriefCarbon=renderRaceBrief;
+  renderRaceBrief=function(){
+    baseRenderRaceBriefCarbon();
+    const c=raceCtx;if(!c)return;
+    if(c.chase || c.isPolice || c.opp?.chase || c.opp?.isPolice){
+      const lines=document.querySelectorAll('#race-content .pre-race-box .pre-race-line');
+      if(lines && lines[2]){
+        const b=lines[2].querySelector('b');
+        const chips=c.chipsReward||12;
+        if(b) b.innerHTML='+'+chips+' ◈ CHIPS';
+      }
+      const drivers=document.querySelectorAll('#race-content .race3-driver b');
+      if(drivers && drivers[1] && c.opp) drivers[1].textContent=c.opp.name||'🚔 ДПС';
+      const badge=document.querySelector('#race-content .race-event-badge');
+      if(badge) badge.innerHTML='<span style="color:#ef4444">СПЕЦ-ПОГОНЯ</span><b>ДПС · УЙДИ И ЗАБЕРИ ЧИПЫ</b>';
+    }
+    if(c.chaos || (c.chaosBots && c.chaosBots.length)){
+      const badge=document.querySelector('#race-content .race-event-badge');
+      const n=(c.chaosBots&&c.chaosBots.length)||3;
+      if(badge) badge.innerHTML='<span>УЛИЧНЫЙ ХАОС</span><b>'+n+' БОТА · 4 ЛИНИИ</b>';
+    }
+  };
+  (window as any).renderRaceBrief=renderRaceBrief;
 
   (window as any).renderMaintenance=renderMaintenance;
   (window as any).updateHeaderFeature=updateHeaderFeature;
