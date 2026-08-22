@@ -1477,3 +1477,91 @@ body.race-mode .race-low-fx .speed-effects,body.race-mode .race-low-fx .race-fx-
   font-size:28px;font-weight:1000;color:#ef4444;letter-spacing:3px;z-index:20;
   background:rgba(0,0,0,.45);
 }
+
+/* ==================== UX + GAMEPLAY FIXPACK 14 ==================== */
+#garage-list.garage-carousel-h{
+  scroll-padding-inline:9vw;
+  overscroll-behavior-x:contain;
+  touch-action:pan-x;
+  padding-inline:8vw!important;
+}
+#garage-list.garage-carousel-h .carousel-card{
+  flex:0 0 min(80vw,360px)!important;
+  min-width:min(80vw,360px)!important;
+  opacity:.55;
+  transform:scale(.86);
+  transition:transform .2s ease,opacity .2s ease,border-color .2s ease,box-shadow .2s ease;
+  border:1px solid #30343a!important;
+}
+#garage-list.garage-carousel-h .carousel-card.is-centered-v14{
+  opacity:1;
+  transform:scale(1);
+  border-color:#fff!important;
+  box-shadow:0 0 0 1px rgba(255,255,255,.7),0 14px 34px rgba(0,0,0,.48)!important;
+}
+#garage-list.garage-carousel-h .carousel-card.is-active:not(.is-centered-v14){
+  border-color:#30343a!important;
+  box-shadow:0 10px 24px rgba(0,0,0,.35)!important;
+}
+
+#garage-list .carousel-card .car-real-image{width:100%;height:100%;object-fit:contain!important;object-position:center}
+#garage-list .carousel-card .btn-select.selected-mark{background:#153d26!important;border-color:#4ade80!important;color:#dcfce7!important}
+.plate-badge-v14{display:inline-flex;align-items:center;justify-content:center;min-height:24px;padding:3px 9px;margin-top:7px;border:1px solid #111;border-radius:4px;background:#f1c84b;color:#0a0a0a;font:900 11px/1.1 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;letter-spacing:.8px;box-shadow:inset 0 1px rgba(255,255,255,.65)}
+.plate-badge-v14.empty{background:#282b31;border-color:#3a3e46;color:#9298a3;letter-spacing:.5px}
+.active-plate-duel-v14{display:flex;align-items:center;margin-left:auto;padding-left:8px}
+
+/* Dealer/showroom: separate identity from garage. */
+#shop-list.showroom-grid-v14{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:12px!important;overflow:visible!important;padding:2px 0 18px!important;max-width:860px!important}
+.showroom-card-v14{position:relative;overflow:hidden;border:1px solid #343841;border-radius:15px;background:linear-gradient(160deg,#171a21,#0b0d12 72%);box-shadow:0 10px 28px rgba(0,0,0,.28);transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease}
+.showroom-card-v14:hover,.showroom-card-v14:focus-within{transform:translateY(-4px);border-color:#b8984f;box-shadow:0 16px 36px rgba(0,0,0,.42),0 0 22px rgba(184,152,79,.08)}
+.showroom-media-v14{position:relative;aspect-ratio:4/3;display:flex;align-items:center;justify-content:center;overflow:hidden;background:radial-gradient(circle at 50% 70%,rgba(184,152,79,.12),transparent 58%),linear-gradient(180deg,#171b23,#080a0e);cursor:pointer}
+.showroom-media-v14 .car-real-image{width:100%;height:100%;object-fit:contain!important;object-position:center;padding:5px;box-sizing:border-box}
+.showroom-media-v14 svg{width:100%;height:100%;object-fit:contain}
+.showroom-class-v14{position:absolute;top:8px;left:8px;padding:4px 7px;border:1px solid rgba(224,199,128,.55);border-radius:7px;background:rgba(7,8,11,.78);backdrop-filter:blur(8px);font-size:8px;font-weight:1000;letter-spacing:.8px;color:#ead59b}
+.showroom-body-v14{padding:10px;display:flex;flex-direction:column;gap:9px}
+.showroom-title-v14{min-height:42px}.showroom-title-v14 b{display:block;font-size:13px;line-height:1.2;color:#fff}.showroom-title-v14 span{display:block;margin-top:3px;font-size:8px;color:var(--text-muted);font-weight:800;text-transform:uppercase}
+.showroom-stats-v14{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px}.showroom-stats-v14 span{min-width:0;padding:6px 4px;border:1px solid #2a2e35;border-radius:7px;background:rgba(255,255,255,.025);text-align:center}.showroom-stats-v14 small{display:block;font-size:6.5px;color:#8f96a1;font-weight:900;letter-spacing:.45px}.showroom-stats-v14 b{display:block;margin-top:2px;font-size:8.5px;white-space:nowrap;color:#f3f4f6}
+.showroom-price-v14{font-size:13px;font-weight:1000;color:#e5c56e}.showroom-card-v14 .btn{width:100%;min-height:38px}
+@media(min-width:760px){#shop-list.showroom-grid-v14{grid-template-columns:repeat(3,minmax(0,1fr))!important}.showroom-title-v14 b{font-size:14px}.showroom-stats-v14 b{font-size:9px}}
+
+/* Duel images: never crop/stretch vehicle art. */
+.duel-car-v127{height:120px!important;min-height:100px!important;display:flex!important;align-items:center!important;justify-content:center!important;background:linear-gradient(180deg,#0d1014,#07090c)!important}
+.duel-car-v127 img{position:relative!important;inset:auto!important;width:100%!important;height:100%!important;max-width:100%!important;max-height:120px!important;object-fit:contain!important;object-position:center!important;padding:4px;box-sizing:border-box}
+.summary-car-img img{object-fit:contain!important;max-width:100%;max-height:100%}
+
+/* Wanted profile interaction. */
+.heat-clickable-v14{cursor:pointer;transition:border-color .16s ease,transform .16s ease}.heat-clickable-v14:hover{border-color:#6b3a34;transform:translateY(-1px)}
+.heat-hint-v14{display:block;margin-top:7px;color:#7f8792;font-size:8px;font-weight:800;letter-spacing:.35px}
+.wanted-stars-v14{display:flex;gap:7px;justify-content:center;margin:12px 0}.wanted-stars-v14 span{font-size:23px;color:#31353c}.wanted-stars-v14 span.on{color:#ef4444;text-shadow:0 0 12px rgba(239,68,68,.45)}
+.wanted-timer-v14{padding:9px;margin:8px 0 10px;border:1px solid #343943;border-radius:8px;background:#11141a;color:#aeb5c0;font-size:10px;font-weight:800}
+.profile-active-car-v14{width:100%;max-width:520px;display:grid;grid-template-columns:118px 1fr;gap:11px;align-items:center;padding:10px;margin:0 0 10px;border:1px solid #30343a;border-radius:12px;background:#0d1014}
+.profile-active-media-v14{height:82px;display:flex;align-items:center;justify-content:center;overflow:hidden;border-radius:9px;background:#080a0d}.profile-active-media-v14 img,.profile-active-media-v14 svg{width:100%;height:100%;object-fit:contain!important}.profile-active-car-v14 small{display:block;color:#888f99;font-size:8px;font-weight:900;letter-spacing:.8px}.profile-active-car-v14 b{display:block;margin-top:3px;font-size:13px;color:#fff}
+
+/* Chase/catch-up status. */
+.chase-closing-v14{color:#ef4444!important;text-shadow:0 0 10px rgba(239,68,68,.35)}
+.race-lead.catching-v14{color:#4ade80!important}.race-lead.surge-v14{color:#facc15!important}.race-lead.losing-v14{color:#ef4444!important}
+.chips-v14{color:#38bdf8!important}.arrest-v14{margin-top:10px;padding:10px;border:1px solid rgba(239,68,68,.45);border-radius:9px;background:rgba(239,68,68,.08);color:#fecaca;font-size:10px;font-weight:900;letter-spacing:.4px}
+
+/* Multi-car track: fixed independent lanes; inline bottom values from legacy HUD cannot merge them. */
+.race-map.race-cinematic .cine-car{transform-origin:center center!important}
+.race-map.race-cinematic .cine-car.player{bottom:43px!important;transform:scale(.82)!important}
+.race-map.race-cinematic .cine-car[data-rival="0"]{bottom:73px!important;transform:scale(.76)!important}
+.race-map.race-cinematic .cine-car[data-rival="1"]{bottom:14px!important;transform:scale(.74)!important}
+.race-map.race-cinematic .cine-car[data-rival="2"]{bottom:94px!important;transform:scale(.72)!important}
+.race-map.race-cinematic .cine-car[data-rival="3"]{bottom:28px!important;transform:scale(.70)!important}
+
+/* Clan visibility segmented control. */
+.clan-mode-v14{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin:10px 0}.clan-mode-v14 label,.clan-mode-v14 button{min-height:40px;display:flex;align-items:center;justify-content:center;gap:6px;padding:8px;border:1px solid #353a43;border-radius:9px;background:#101319;color:#d8dde5;font-size:9px;font-weight:900;cursor:pointer}.clan-mode-v14 input{accent-color:#e5c56e}.clan-mode-v14 button.active{border-color:#e5c56e;color:#f4df9c;background:#242015}.clan-mode-v14.settings{max-width:520px}
+
+@media(max-width:430px){
+  #garage-list.garage-carousel-h{padding-inline:9vw!important}
+  #garage-list.garage-carousel-h .carousel-card{flex-basis:80vw!important;min-width:80vw!important}
+  .showroom-body-v14{padding:8px}.showroom-stats-v14{gap:3px}.showroom-stats-v14 span{padding:5px 2px}.showroom-stats-v14 b{font-size:7.5px}.showroom-price-v14{font-size:11px}
+  .duel-card-v127{grid-template-columns:92px 1fr!important}.duel-car-v127{height:108px!important;min-height:108px!important}.duel-car-v127 img{max-height:108px!important}
+}
+
+nav{padding-bottom:max(8px,env(safe-area-inset-bottom))!important}
+#main-scroll{padding-bottom:calc(92px + env(safe-area-inset-bottom))!important}
+
+/* V14 chase has no police finish marker. */
+.race-map.race-cinematic.chase-v14 .cine-finish-line{display:none!important}

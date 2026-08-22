@@ -7,7 +7,7 @@ export async function syncProfile(playerId:string, username:string|null, body:Pr
   const supabase=createServerSupabase();
   const {error}=await supabase.from('player_profiles').update({
     name:body.displayName,photo_url:body.photoUrl??null,current_car_name:body.currentCarName??null,
-    active_car_id:body.activeCarId,active_plate:body.activePlate??null,telegram_username:username,last_seen:new Date().toISOString()
+    active_car_id:body.activeCarId,active_plate:body.activePlate??null,wanted_level:body.wantedLevel??0,telegram_username:username,last_seen:new Date().toISOString()
   }).eq('id',playerId);
   if(error)throw error;
 }

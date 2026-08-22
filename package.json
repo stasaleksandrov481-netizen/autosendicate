@@ -18,7 +18,8 @@
     "check:v12-5": "node scripts/verify-v12-5.mjs",
     "telegram:setup": "node scripts/setup-telegram-webhook.mjs",
     "check:v12-7": "node scripts/verify-v12-7.mjs",
-    "check:v12-8": "node scripts/verify-v12-8.mjs"
+    "check:v12-8": "node scripts/verify-v12-8.mjs",
+    "check:v14": "node scripts/verify-fixpack-v14.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.3",
