@@ -1048,7 +1048,7 @@ nav{
 .duel-v11-heading p{max-width:420px!important}
 .duel-v11-live b{font-size:8px!important}
 .duel-v11-live span{font-size:7px!important}
-@media (min-width:720px){.duel-v11-list{grid-template-columns:repeat(2,minmax(0,1fr))!important}}
+@media (min-width:720px){.duel-v11-list{grid-template-columns:1fr!important}}
 
 /* Casino hub */
 .casino-screen-premium{align-items:stretch!important}
@@ -1191,22 +1191,43 @@ main#main-scroll{height:calc(var(--as-app-height,100dvh) - var(--header-h,58px))
 .duel-v11-toolbar button{flex:0 1 auto!important;padding:5px 8px!important;border-radius:3px!important;font-size:7px!important;letter-spacing:.35px!important}
 .duel-v11-summary{max-width:none!important;margin:0!important;min-height:32px!important;padding:5px 7px!important;border-radius:5px!important;display:flex!important;align-items:center!important;justify-content:space-between!important;gap:6px!important}
 .duel-v11-summary .summary-main{gap:7px!important}.duel-v11-summary .summary-car,.duel-v11-summary .summary-car-img{width:30px!important;height:22px!important;border-radius:3px!important;overflow:hidden!important;flex:0 0 auto!important}.duel-v11-summary .summary-car img,.duel-v11-summary .summary-car-img img{width:100%!important;height:100%!important;object-fit:cover!important;display:block!important}.duel-v11-summary b{font-size:8px!important}.duel-v11-summary span,.duel-v11-summary small{font-size:6.5px!important}
-.duel-v11-list{max-width:none!important;width:100%!important;display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:5px!important;margin:0!important;padding:0!important;align-content:start!important}
-.duel-card-v127{min-width:0!important;min-height:92px!important;height:92px!important;display:grid!important;grid-template-columns:64px minmax(0,1fr)!important;grid-template-rows:1fr auto!important;gap:0!important;padding:0!important;overflow:hidden!important;border-radius:5px!important;background:linear-gradient(145deg,#111510,#090b09)!important;border:1px solid #2b312a!important;animation:rivalIn .18s ease both!important;contain:layout paint style!important}
-.duel-card-v127.risk{border-color:#4b3d1a!important}.duel-card-v127.boss{border-color:#66501d!important}
-.duel-car-v127{grid-row:1/3;position:relative!important;width:64px!important;height:100%!important;background:#080a08!important;border-right:1px solid #262c25!important;overflow:hidden!important}
-.duel-car-v127 img{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;object-fit:cover!important;object-position:center!important;filter:saturate(.86) contrast(1.05)!important}
-.duel-car-v127:after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent 52%,rgba(7,9,7,.8));pointer-events:none}
-.duel-car-v127 span{position:absolute!important;left:4px!important;top:4px!important;z-index:2!important;padding:2px 3px!important;background:#090b09dd!important;border:1px solid #3a4038!important;font-size:6px!important;letter-spacing:.6px!important}
-.duel-core-v127{min-width:0!important;padding:6px 6px 2px!important;align-self:start!important}
-.duel-name-v127{display:flex!important;justify-content:space-between!important;gap:5px!important;align-items:center!important}.duel-name-v127 b{min-width:0!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;font-size:8.5px!important}.duel-name-v127 i{font-size:5.5px!important;padding:2px 3px!important;border:1px solid #393f36!important;color:#a9b0a5!important;font-style:normal!important;white-space:nowrap!important}
-.duel-core-v127>small{display:block!important;margin-top:2px!important;color:#8b9288!important;font-size:6.3px!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important}
-.duel-stats-v127{display:flex!important;gap:5px!important;margin-top:4px!important;font-size:5.8px!important;color:#9ca398!important;white-space:nowrap!important;overflow:hidden!important}.duel-stats-v127 span:last-child{color:#e0bd44!important}
-.duel-bar-v127{height:2px!important;margin-top:4px!important;background:#161a15!important;overflow:hidden!important}.duel-bar-v127 i{display:block!important;height:100%!important;background:linear-gradient(90deg,#8e7b2c,#e0bc40)!important}
-.duel-go-v127{grid-column:2!important;display:flex!important;align-items:center!important;gap:4px!important;padding:2px 5px 5px!important;min-width:0!important}.duel-go-v127>div{display:flex!important;gap:4px!important;min-width:0!important;flex:1!important;overflow:hidden!important}.duel-go-v127>div span{font-size:5.6px!important;color:#777f75!important;white-space:nowrap!important;min-width:0!important;overflow:hidden!important;text-overflow:ellipsis!important}.duel-go-v127>div b{color:#c7ccc4!important}.duel-go-v127 button{height:23px!important;min-width:56px!important;flex:0 0 auto!important;padding:0 6px!important;border:1px solid #7b6420!important;background:linear-gradient(180deg,#cfaa31,#856b17)!important;color:#090a08!important;font-size:6.5px!important;font-weight:1000!important;letter-spacing:.35px!important;border-radius:3px!important;box-shadow:none!important}.duel-go-v127 button:disabled{filter:grayscale(.85)!important;opacity:.45!important}.duel-go-v127>small{display:none!important}
-.duel-pagebar{grid-column:1/-1!important;display:flex!important;align-items:center!important;justify-content:center!important;gap:7px!important;margin:1px 0 0!important}.duel-pagebar button{width:30px!important;height:24px!important;border-radius:3px!important}.duel-pagebar span{font-size:7px!important}
+/* ==================== Duel opponent list — readable single-column cards ==================== */
+.duel-v11-list{max-width:none!important;width:100%!important;display:flex!important;flex-direction:column!important;gap:10px!important;margin:0!important;padding:0!important}
+.duel-card-v127{position:relative;display:flex!important;align-items:stretch!important;gap:0!important;width:100%!important;min-height:0!important;height:auto!important;padding:0!important;overflow:hidden!important;border-radius:14px!important;background:linear-gradient(145deg,#12160f,#0a0d09)!important;border:1px solid #2b312a!important;box-shadow:0 8px 20px rgba(0,0,0,.25)!important;animation:rivalIn .18s ease both!important}
+.duel-card-v127.risk{border-color:#5c4a1f!important}
+.duel-card-v127.extreme{border-color:#6b3320!important}
+.duel-card-v127.easy{border-color:#265a3a!important}
+.duel-card-v127.boss{border-color:#8a6c1f!important;box-shadow:0 8px 24px rgba(202,161,42,.15)!important}
+.duel-car-v127{position:relative!important;width:104px!important;flex:0 0 104px!important;align-self:stretch!important;background:#080a08!important;border-right:1px solid #262c25!important;overflow:hidden!important}
+.duel-car-v127 img{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;object-fit:cover!important;object-position:center!important;filter:saturate(.9) contrast(1.05)!important}
+.duel-car-v127:after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,transparent 55%,rgba(6,8,6,.85));pointer-events:none}
+.duel-car-v127 span{position:absolute!important;left:6px!important;bottom:6px!important;z-index:2!important;padding:3px 6px!important;background:#090b09e6!important;border:1px solid #3a4038!important;border-radius:6px!important;font-size:9px!important;font-weight:800!important;letter-spacing:.3px!important;color:#e5e8e3!important}
+.duel-core-v127{min-width:0!important;flex:1!important;padding:10px 12px!important;display:flex!important;flex-direction:column!important;gap:6px!important;justify-content:center!important}
+.duel-name-v127{display:flex!important;flex-wrap:wrap!important;justify-content:space-between!important;gap:6px!important;align-items:center!important}
+.duel-name-v127 b{min-width:0!important;font-size:13px!important;font-weight:900!important;color:#f1f3ef!important;white-space:normal!important}
+.duel-name-v127 i{flex:0 0 auto!important;font-size:8px!important;font-weight:900!important;padding:3px 7px!important;border-radius:999px!important;border:1px solid #3d443a!important;color:#c3cabf!important;font-style:normal!important;white-space:nowrap!important;text-transform:uppercase;letter-spacing:.4px}
+.duel-card-v127.risk .duel-name-v127 i{border-color:#7a621f;color:#f2cb5c;background:rgba(122,98,31,.15)}
+.duel-card-v127.extreme .duel-name-v127 i{border-color:#8a4a2e;color:#f4956a;background:rgba(138,74,46,.15)}
+.duel-card-v127.easy .duel-name-v127 i{border-color:#357a4f;color:#7fe3ab;background:rgba(53,122,79,.15)}
+.duel-card-v127.boss .duel-name-v127 i{border-color:#a3831f;color:#f7d764;background:rgba(163,131,31,.18)}
+.duel-core-v127>small{display:block!important;margin:0!important;color:#96a08f!important;font-size:10.5px!important;font-weight:600;white-space:normal!important}
+.duel-stats-v127{display:flex!important;flex-wrap:wrap!important;gap:4px 12px!important;margin:0!important;font-size:10px!important;font-weight:700;color:#aab2a3!important;white-space:normal!important}
+.duel-stats-v127 span:last-child{color:#e8c74d!important;font-weight:900}
+.duel-bar-v127{height:4px!important;border-radius:3px;margin:0!important;background:#181c15!important;overflow:hidden!important}
+.duel-bar-v127 i{display:block!important;height:100%!important;border-radius:3px;background:linear-gradient(90deg,#8e7b2c,#e8c74d)!important}
+.duel-go-v127{display:flex!important;align-items:center!important;justify-content:space-between!important;gap:10px!important;padding:0 12px 12px!important;min-width:0!important}
+.duel-go-v127>div{display:flex!important;gap:14px!important;min-width:0!important;flex-wrap:wrap;}
+.duel-go-v127>div span{font-size:10px!important;font-weight:600;color:#8a938c!important;white-space:nowrap!important;display:flex;flex-direction:column;gap:2px}
+.duel-go-v127>div b{color:#e7ebe4!important;font-size:12px!important;font-weight:900}
+.duel-go-v127 button{height:38px!important;min-width:96px!important;flex:0 0 auto!important;padding:0 16px!important;border:1px solid #7b6420!important;background:linear-gradient(180deg,#e0bc40,#a9871e)!important;color:#171300!important;font-size:11px!important;font-weight:1000!important;letter-spacing:.4px!important;border-radius:9px!important;box-shadow:0 4px 12px rgba(202,161,42,.25)!important}
+.duel-go-v127 button:disabled{filter:grayscale(.85)!important;opacity:.5!important;box-shadow:none!important}
+.duel-go-v127>small,.recent-rival{display:block!important;width:100%;margin:-2px 12px 8px!important;font-size:9px;color:#7d867e;font-style:italic}
+.duel-pagebar{display:flex!important;align-items:center!important;justify-content:center!important;gap:10px!important;margin:4px 0 0!important}
+.duel-pagebar button{width:34px!important;height:30px!important;border-radius:8px!important}
+.duel-pagebar span{font-size:9px!important}
+@media(max-width:420px){.duel-car-v127{width:88px!important;flex-basis:88px!important}.duel-name-v127 b{font-size:12px!important}.duel-go-v127{flex-wrap:wrap!important}.duel-go-v127 button{width:100%!important;min-width:0!important}}
+@media(max-width:329px){.duel-v11-toolbar button{padding-inline:6px!important}.duel-v11-live{display:none!important}}
 .empty-note{padding:15px 8px!important;font-size:8px!important}
-@media(max-width:329px){.duel-v11-list{grid-template-columns:1fr!important}.duel-card-v127{height:88px!important}.duel-v11-toolbar button{padding-inline:6px!important}.duel-v11-live{display:none!important}}
 
 /* Compact race cockpit sized for Telegram's real dynamic viewport. */
 body.race-mode main#main-scroll{overflow:hidden!important;padding:4px 6px calc(58px + var(--as-safe-bottom))!important}
@@ -1236,25 +1257,36 @@ body.race-mode .dial-needle{transition:transform .075s linear!important}
 body.race-mode .race-low-fx .speed-effects,body.race-mode .race-low-fx .race-fx-canvas{display:none!important}
 
 /* ===== PROFILE TAGS / COMMUNITY ROLE BADGES (multi-tag) ===== */
-.tags-row{display:inline-flex;flex-wrap:wrap;align-items:center;gap:5px;vertical-align:middle;margin-left:6px;}
-.tags-row.compact{gap:3px;margin-left:0;}
+/* Default: tags sit on their OWN row under the name (never glued to the text next to it).
+   Only inside a flex header (chat name row) do they sit inline — see .chat-msg-name below,
+   where the parent is already a flex row so the outer display type has no visual effect. */
+.tags-row{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:5px;}
+.tags-row.compact{gap:4px;margin-top:4px;}
 .tag-badge{display:inline-flex;align-items:center;gap:5px;vertical-align:middle;padding:3px 10px 3px 3px;border-radius:999px;background:var(--tag-bg,#FACC15);color:var(--tag-fg,#171717);border:1px solid rgba(255,255,255,.35);font-size:10px;font-weight:900;line-height:1.5;letter-spacing:.2px;white-space:nowrap;max-width:230px;overflow:hidden;text-overflow:ellipsis;box-shadow:0 3px 10px rgba(0,0,0,.28);}
 .tag-badge-icon{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:rgba(0,0,0,.16);color:var(--tag-fg,#171717);flex:0 0 auto;}
 .tag-badge-icon svg{display:block;}
 .tag-badge.compact{font-size:7px;padding:2px 6px 2px 2px;gap:3px;box-shadow:none;max-width:120px;}
 .tag-badge.compact .tag-badge-icon{width:11px;height:11px;}
 .tag-badge-label{position:relative;top:.5px;}
-.tag-badge-glow{box-shadow:0 0 1px 1px var(--tag-bg),0 0 10px 2px var(--tag-bg),0 0 20px 4px color-mix(in srgb, var(--tag-bg) 45%, transparent);animation:tagBadgeGlowPulse 2.6s ease-in-out infinite;}
-.tag-badge.compact.tag-badge-glow{box-shadow:0 0 1px 1px var(--tag-bg),0 0 5px 1px var(--tag-bg),0 0 9px 2px color-mix(in srgb, var(--tag-bg) 40%, transparent);}
-@keyframes tagBadgeGlowPulse{0%,100%{filter:brightness(1);}50%{filter:brightness(1.15);}}
+.tag-badge-glow{box-shadow:0 0 1px 1px var(--tag-bg),0 0 9px 2px var(--tag-bg),0 0 16px 3px color-mix(in srgb, var(--tag-bg) 40%, transparent);animation:tagBadgeGlowPulse 2.6s ease-in-out infinite;}
+.tag-badge.compact.tag-badge-glow{box-shadow:0 0 1px 1px var(--tag-bg),0 0 4px 1px var(--tag-bg),0 0 7px 1px color-mix(in srgb, var(--tag-bg) 35%, transparent);}
+@keyframes tagBadgeGlowPulse{0%,100%{filter:brightness(1);}50%{filter:brightness(1.12);}}
 .profile-tag-host-v13{min-height:0;margin-top:7px;}
-.profile-tag-host-v13 .tags-row{margin-left:0;}
-.pp-name-v9 .tags-row{margin-left:6px;}
+.profile-tag-host-v13 .tags-row{margin-top:0;}
 .chat-msg-name-text{white-space:nowrap;}
-.chat-msg-profile-link{font-size:7px;color:var(--accent);white-space:nowrap;}
-.lb-name .tags-row{position:relative;top:-1px;}
+.chat-msg-name .tags-row{margin-top:0;}
+.chat-msg-profile-link{font-size:7px;color:var(--accent);white-space:nowrap;margin-left:auto;}
 .admin-table em{font-style:normal;display:inline-flex;align-items:center;gap:4px;margin-left:5px;padding:4px 7px;border-radius:999px;font-size:8px;font-weight:1000;line-height:1;}
 @media (max-width:560px){.tag-badge{max-width:170px;font-size:9px}.tag-badge.compact{max-width:100px;font-size:7px}.profile-tag-host-v13{margin-top:6px}}
+
+/* Some list rows (clan roster, friends list) style every nested <span> generically
+   (display:block, small muted color) for their own layout needs. That rule cascades
+   into our badge markup too since it's just nested spans, so it has to be pinned back
+   here — otherwise the icon/label split apart into a vertical stack. */
+.clan-member-v9 .tags-row,.social-row-v9 .tags-row{display:flex!important;}
+.clan-member-v9 .tag-badge,.social-row-v9 .tag-badge{display:inline-flex!important;white-space:nowrap!important;overflow:hidden!important;margin-top:0!important;}
+.clan-member-v9 .tag-badge-icon,.social-row-v9 .tag-badge-icon{display:inline-flex!important;margin-top:0!important;}
+.clan-member-v9 .tag-badge-label,.social-row-v9 .tag-badge-label{display:inline!important;color:inherit!important;font-size:inherit!important;margin-top:0!important;white-space:nowrap!important;overflow:visible!important;text-overflow:clip!important;}
 
 /* ===== ADMIN: TAG MANAGER ===== */
 .tag-manager-lib{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 16px;}
