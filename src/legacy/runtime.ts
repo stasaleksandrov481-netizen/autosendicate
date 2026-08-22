@@ -3913,13 +3913,13 @@ if (typeof window !== 'undefined') {
     baseRenderOpponents();
     setTimeout(()=>{
       const box=document.createElement('article');box.className='chaos-mode-card';
-      box.innerHTML='<div><span class="mode-kicker">4 ЛИНИИ · ВЫСОКИЙ КУШ</span><h3>Уличный хаос</h3><p>Игрок + 3 бота с динамическими именами. До 30% шанс ДПС на 5-й полосе.</p></div><div class="mode-reward">×1.65 SYND</div><button class="btn btn-select" onclick="startStreetChaos()">СТАРТОВАТЬ</button>';
+      box.innerHTML='<div><span class="mode-kicker">4 ЛИНИИ · ВЫСОКИЙ КУШ</span><h3>Уличный хаос</h3><p>Игрок + 3 бота с динамическими именами. До 30% шанс ДПС на 5-й полосе.</p></div><div class="mode-reward">×1.65 SYND</div><button class="btn btn-select" onclick="window.startStreetChaos()">СТАРТОВАТЬ</button>';
       root.prepend(box);
       const chase=document.createElement('article');chase.className='chase-mode-card';
-      chase.innerHTML='<div><span class="mode-kicker">CHIP FARM</span><h3>Спец-погоня</h3><p>Игрок против ДПС. Побег даёт Чипы и снижает Heat Level.</p></div><div class="mode-reward">'+chipIcon()+' 8–24</div><button class="btn btn-gold" onclick="startSpecialChase()">УЙТИ ОТ ДПС</button>';
+      chase.innerHTML='<div><span class="mode-kicker">CHIP FARM</span><h3>Спец-погоня</h3><p>Игрок против ДПС. Побег даёт Чипы и снижает Heat Level.</p></div><div class="mode-reward">'+chipIcon()+' 8–24</div><button class="btn btn-gold" onclick="window.startSpecialChase()">УЙТИ ОТ ДПС</button>';
       root.prepend(chase);
       const hard=document.createElement('article');hard.className='hardcore-mode-card';
-      hard.innerHTML='<div><span class="mode-kicker">HARDCORE</span><h3>Идеальное переключение</h3><p>Зелёная зона сужается, зона смещается. Красная ошибка = перегрев и −40% скорости.</p></div><button class="btn btn-ghost" onclick="startHardcoreRace()">ВКЛЮЧИТЬ HARDCORE</button>';
+      hard.innerHTML='<div><span class="mode-kicker">HARDCORE</span><h3>Идеальное переключение</h3><p>Зелёная зона сужается, зона смещается. Красная ошибка = перегрев и −40% скорости.</p></div><button class="btn btn-ghost" onclick="window.startHardcoreRace()">ВКЛЮЧИТЬ HARDCORE</button>';
       root.prepend(hard);
       updateHeaderFeature();
     },0);
@@ -3928,28 +3928,34 @@ if (typeof window !== 'undefined') {
   function modeOpp(name,power,reward){
     return {id:'feature_'+Date.now(),name,power,reward,unlockLevel:1,taunt:'Спецрежим',boss:false};
   }
+  function startFeatureRace(target:any, featureMode:string){
+    // prepareRace historically accepts an opponent id, not an object. Register a temporary
+    // opponent first so the real race engine is entered instead of silently returning.
+    const existing=opponentsDB.findIndex((o:any)=>String(o.id)===String(target.id));
+    if(existing>=0) opponentsDB[existing]=target; else opponentsDB.push(target);
+    featurePrepareRace(String(target.id),'normal');
+    return raceCtx;
+  }
   function startStreetChaos(){
     const car=carsDB.find((x:any)=>x.id===state.activeCarId);if(!car)return;
     const bots=opponentsDB.filter((o:any)=>!o.boss).slice().sort(()=>Math.random()-.5).slice(0,3).map((o:any)=>rivalInstance(o));
-    const lead=modeOpp(bots[0].name,Math.max(...bots.map((x:any)=>x.power)),Math.round(ECONOMY_V12_6.raceReward({power:getEffectivePower(car)})*1.65));
-    (lead as any).chaosBots=bots;(lead as any).chaos=true;(lead as any).reward=lead.reward;
-    const basePrepare=prepareRace;basePrepare(lead,'normal');
-    if(raceCtx){raceCtx.mode='chaos';raceCtx.chaosBots=bots;raceCtx.lanes=4;raceCtx.policeLane=Math.random()<.30;renderRaceBrief();}
+    const lead=modeOpp('Уличный хаос',Math.max(...bots.map((x:any)=>x.power)),Math.round(ECONOMY_V12_6.raceReward({power:getEffectivePower(car)})*1.65));
+    (lead as any).chaosBots=bots;(lead as any).chaos=true;
+    const c=startFeatureRace(lead,'chaos');
+    if(c){c.mode='chaos';c.chaos=true;c.chaosBots=bots;c.lanes=4;c.policeLane=Math.random()<.30;c.radarChance=0;renderRaceBrief();}
   }
   function startSpecialChase(){
     const car=carsDB.find((x:any)=>x.id===state.activeCarId);if(!car)return;
     const cop=modeOpp('ДПС · Патруль №'+(100+Math.floor(Math.random()*900)),getEffectivePower(car)*1.08,0);
     (cop as any).chase=true;(cop as any).reward=0;
-    const basePrepare=prepareRace;basePrepare(cop,'normal');
-    if(raceCtx){
-      raceCtx.mode='chase';raceCtx.lanes=3;raceCtx.chase=true;raceCtx.chipsReward=8+Math.floor(Math.random()*17);
-      raceCtx.radarChance=0;renderRaceBrief();
-    }
+    const c=startFeatureRace(cop,'chase');
+    if(c){c.mode='chase';c.lanes=3;c.chase=true;c.chipsReward=8+Math.floor(Math.random()*17);c.radarChance=0;renderRaceBrief();}
   }
   function startHardcoreRace(){
-    const list=opponentsDB.filter((o:any)=>!o.boss);const o=rivalInstance(rand(list));
-    const basePrepare=prepareRace;basePrepare(o,'normal');
-    if(raceCtx){raceCtx.mode='hardcore';raceCtx.lanes=2;raceCtx.hardcore=true;renderRaceBrief();}
+    const list=opponentsDB.filter((o:any)=>!o.boss);if(!list.length)return;
+    const o=rivalInstance(rand(list));
+    const c=startFeatureRace(o,'hardcore');
+    if(c){c.mode='hardcore';c.lanes=2;c.hardcore=true;c.radarChance=0;renderRaceBrief();}
   }
   (window as any).startStreetChaos=startStreetChaos;
   (window as any).startSpecialChase=startSpecialChase;
@@ -4136,8 +4142,18 @@ if (typeof window !== 'undefined') {
     root.innerHTML=cars.map((car:any)=>'<article class="carousel-card" data-car-id="'+car.id+'"><div class="car-thumb" onclick="openDetail('+car.id+')">'+carArtSVG(car)+'</div><div class="car-info-box"><div class="car-title">'+escapeHtml(car.name)+'</div><div class="car-stats"><span>'+fmt(getEffectivePower(car))+' л.с.</span><span>'+escapeHtml(car.tier)+'</span></div><p class="carousel-desc">'+escapeHtml(car.flavor)+'</p>'+(owned?plateVisual():'')+'<button class="btn '+(owned?'btn-ghost':'btn-buy')+'" onclick="'+(owned?'selectCar('+car.id+')':'buyCar('+car.id+')')+'">'+(owned?'ВЫБРАТЬ':'КУПИТЬ · '+fmt(car.price)+' SYND')+'</button></div></article>').join('');
   }
   const oldGarage=renderGarage, oldShop=renderShop;
-  renderGarage=function(){oldGarage();setTimeout(()=>{const cars=carsDB.filter((c:any)=>state.ownedCars.includes(c.id));renderCarousel('garage-list',cars,true);const active=state.activeCarId;const car=carsDB.find((x:any)=>x.id===active);if(car){const svc=document.getElementById('garage-quick-service');if(svc)svc.insertAdjacentHTML('beforeend',renderMaintenance(active));}},0);};
-  renderShop=function(){oldShop();setTimeout(()=>renderCarousel('shop-list',carsDB.slice(),false),0);};
+  renderGarage=function(){
+    oldGarage();
+    const cars=carsDB.filter((c:any)=>state.ownedCars.includes(c.id));
+    renderCarousel('garage-list',cars,true);
+    const active=state.activeCarId, svc=document.getElementById('garage-quick-service');
+    if(svc){svc.innerHTML=renderMaintenance(active);}
+    updateHeaderFeature();
+  };
+  renderShop=function(){
+    oldShop();
+    renderCarousel('shop-list',carsDB.slice(),false);
+  };
 
   // Chat badge + 99+ cap.
   function renderChatBadge(){
@@ -4223,4 +4239,5 @@ if (typeof window !== 'undefined') {
   (window as any).manualShift=manualShift;
   (window as any).updateRaceHUD=updateRaceHUD;
   updateHeaderFeature();
+  renderGarage();
 })();
