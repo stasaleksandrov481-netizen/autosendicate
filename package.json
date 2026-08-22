@@ -1,6 +1,6 @@
 {
   "name": "autosyndicate-carbon",
-  "version": "15.0.0",
+  "version": "16.0.0",
   "private": true,
   "engines": {
     "node": ">=20.9.0"
@@ -20,7 +20,9 @@
     "check:v12-7": "node scripts/verify-v12-7.mjs",
     "check:v12-8": "node scripts/verify-v12-8.mjs",
     "check:v14": "node scripts/verify-fixpack-v14.mjs",
-    "check:v15": "node scripts/verify-update-v15.mjs"
+    "check:v15": "node scripts/verify-update-v15.mjs",
+    "check:v15.1": "node scripts/verify-v15-1-menu-garage.mjs",
+    "check:v16": "node scripts/verify-v16.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.3",

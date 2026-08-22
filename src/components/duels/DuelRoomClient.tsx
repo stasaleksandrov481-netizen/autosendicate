@@ -15,8 +15,17 @@ interface DuelRoom {
   player_b_ready: boolean;
   player_a_result?: DuelResult | null;
   player_b_result?: DuelResult | null;
+  player_a_progress?: DuelProgress | null;
+  player_b_progress?: DuelProgress | null;
   winner_player_id?: string | null;
   start_at?: string | null;
+}
+
+interface DuelProgress {
+  distance: number;
+  speedKmh: number;
+  elapsedMs: number;
+  updatedAt?: string;
 }
 
 interface DuelResult {
@@ -105,6 +114,8 @@ export function DuelRoomClient({ code, onClose }: { code: string; onClose: () =>
   const otherReady = data?.role === 'a' ? data?.room.player_b_ready : data?.room.player_a_ready;
   const myResult = data?.role === 'a' ? data?.room.player_a_result : data?.room.player_b_result;
   const otherResult = data?.role === 'a' ? data?.room.player_b_result : data?.room.player_a_result;
+  const myProgress = data?.role === 'a' ? data?.room.player_a_progress : data?.room.player_b_progress;
+  const otherProgress = data?.role === 'a' ? data?.room.player_b_progress : data?.room.player_a_progress;
   const otherCar = data?.selectedCars.find((car) => car.id === otherCarId);
   const startMs = data?.room.start_at ? new Date(data.room.start_at).getTime() : 0;
   const countdown = startMs ? Math.max(0, Math.ceil((startMs - now) / 1000)) : null;
@@ -177,6 +188,10 @@ export function DuelRoomClient({ code, onClose }: { code: string; onClose: () =>
 
         {data.room.status === 'racing' && <div className="duel-countdown-card">
           {countdown && countdown > 0 ? <><span>СТАРТ ЧЕРЕЗ</span><b>{countdown}</b><small>Приготовьтесь к дуэли</small></> : myResult ? <><span>ВАШ РЕЗУЛЬТАТ ПРИНЯТ</span><b>{(myResult.elapsedMs / 1000).toFixed(3)}</b><small>{otherResult ? 'Соперник финишировал' : 'Ожидаем результат соперника'}</small></> : <><span>ДУЭЛЬ АКТИВНА</span><b>GO</b><small>Финишируйте первым</small></>}
+          {(!countdown || countdown <= 0) && <div className="duel-live-progress-v16">
+            <span>ВЫ <b>{Math.round(myProgress?.distance || 0)} м</b> · {Math.round(myProgress?.speedKmh || 0)} км/ч</span>
+            <span>СОПЕРНИК <b>{Math.round(otherProgress?.distance || 0)} м</b> · {Math.round(otherProgress?.speedKmh || 0)} км/ч</span>
+          </div>}
         </div>}
 
         {finished && <div className={`duel-finish-card ${winnerLabel === 'ПОБЕДА' ? 'win' : winnerLabel === 'ПОРАЖЕНИЕ' ? 'loss' : ''}`}>

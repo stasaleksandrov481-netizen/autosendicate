@@ -25,11 +25,11 @@ export const GAME_SHELL = `
 <main id="main-scroll">
 
   <!-- ГАРАЖ -->
-  <div id="screen-garage" class="screen active">
-    <div class="section-title"><span>Ваш гараж</span><span id="garage-count" style="color:#fff;font-size:12px;"></span></div>
-    <div class="quick-service" id="garage-quick-service"></div>
-    <div class="carbon-toolbar" id="garage-toolbar"></div>
-    <div class="list-container" id="garage-list"></div>
+  <div id="screen-garage" class="screen active garage-screen-v151">
+    <div class="section-title garage-title-v151"><span>Ваш гараж</span><span id="garage-count"></span></div>
+    <div class="carbon-toolbar garage-toolbar-v151" id="garage-toolbar"></div>
+    <div class="list-container garage-stage-v151" id="garage-list"></div>
+    <div class="quick-service garage-service-v151" id="garage-quick-service"></div>
   </div>
 
   <!-- САЛОН -->
@@ -256,6 +256,26 @@ export const GAME_SHELL = `
     </div>
   </div>
 
+  <!-- ГЛАВНОЕ МЕНЮ -->
+  <div id="screen-more" class="screen more-screen-v151">
+    <div class="more-hero-v151">
+      <div><span>ЦЕНТР УПРАВЛЕНИЯ</span><h2>Меню</h2><p>Социалка, сервисы и дополнительные режимы — отдельно от профиля.</p></div>
+      <button class="more-profile-btn-v151" onclick="switchTab('profile')">ПРОФИЛЬ</button>
+    </div>
+    <div class="more-grid-v15 more-grid-v151" id="more-grid-v15">
+      <div class="hub-card" id="menu-chat-v151" onclick="switchTab('chat')"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8M8 12h5"/></svg></div><div class="lbl">Чаты</div><div class="sub">Синдикат онлайн</div></div>
+      <div class="hub-card" id="menu-clans-v151" onclick="switchTab('clans')"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3 19 6v5c0 4.6-2.8 8-7 10-4.2-2-7-5.4-7-10V6z"/><path d="m9 12 2 2 4-5"/></svg></div><div class="lbl">Кланы</div><div class="sub">Состав и рейтинг</div></div>
+      <div class="hub-card" id="menu-friends-v151" onclick="switchTab('friends')"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M3 20c.6-4 2.8-6 6-6s5.4 2 6 6M14 15c2.8.2 4.7 1.8 5.4 5"/></svg></div><div class="lbl">Друзья</div><div class="sub">Поиск и заявки</div></div>
+      <div class="hub-card" id="menu-cases-v151" onclick="switchTab('cases')"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 8h16v12H4z"/><path d="M7 8V5h10v3M12 8v12"/></svg></div><div class="lbl">Кейсы</div><div class="sub">Награды и лут</div></div>
+      <div class="hub-card" id="menu-market-v151" onclick="switchTab('market')"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 9h16l-1-5H5z"/><path d="M5 9v10h14V9M9 19v-5h6v5"/></svg></div><div class="lbl">Рынок</div><div class="sub">Покупка и продажа</div></div>
+      <div class="hub-card" id="menu-rating-v151" onclick="switchTab('leaderboard')"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 20v-7h4v7M10 20V7h4v13M15 20v-4h4v4"/><path d="M4 20h16"/></svg></div><div class="lbl">Рейтинг</div><div class="sub">Лучшие пилоты</div></div>
+      <div class="hub-card" id="menu-bank-v151" onclick="switchTab('bank')"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m3 9 9-5 9 5M5 10v8M9 10v8M15 10v8M19 10v8M3 20h18"/></svg></div><div class="lbl">Банк</div><div class="sub">Переводы SYND</div></div>
+      <div class="hub-card" id="menu-referrals-v151" onclick="switchTab('referrals')"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="8" cy="8" r="3"/><path d="M3 20c.6-4 2.3-6 5-6s4.4 2 5 6M16 6v6M13 9h6"/></svg></div><div class="lbl">Рефералы</div><div class="sub">Приглашения и бонусы</div></div>
+      <div class="hub-card" id="menu-chips-v151" onclick="switchTab('chips')"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2 20 7v10l-8 5-8-5V7z"/><path d="m8 12 4-6 4 6-4 6z"/></svg></div><div class="lbl">Чип-контракты</div><div class="sub">Редкая валюта</div></div>
+      <div class="hub-card" id="menu-settings-v151" onclick="switchTab('settings')"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19 13.5v-3l-2-.7-.8-1.8.9-1.9-2.2-2.2-1.9.9-1.8-.8-.7-2h-3l-.7 2-1.8.8-1.9-.9-2.2 2.2.9 1.9-.8 1.8-2 .7v3l2 .7.8 1.8-.9 1.9 2.2 2.2 1.9-.9 1.8.8.7 2h3l.7-2 1.8-.8 1.9.9 2.2-2.2-.9-1.9.8-1.8z"/></svg></div><div class="lbl">Настройки</div><div class="sub">Игра и управление</div></div>
+    </div>
+  </div>
+
   <!-- КАРТА РАЙОНОВ / КАРЬЕРА -->
   <div id="screen-districts" class="screen">
     <div class="back-link" onclick="switchTab('profile')">← Профиль</div>
@@ -356,9 +376,9 @@ export const GAME_SHELL = `
   <div class="nav-btn" onclick="switchTab('casino')" data-tab="casino"><span class="ic">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8" cy="8" r="1.4" fill="currentColor" stroke="none"/><circle cx="16" cy="8" r="1.4" fill="currentColor" stroke="none"/><circle cx="8" cy="16" r="1.4" fill="currentColor" stroke="none"/><circle cx="16" cy="16" r="1.4" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/></svg>
   </span>Казино</div>
-  <div class="nav-btn" onclick="switchTab('profile')" data-tab="profile"><span class="ic" id="nav-profile-ic">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.5"/><path d="M4.5 20c1.5-4 4.5-6 7.5-6s6 2 7.5 6"/></svg>
-  </span>Профиль</div>
+  <div class="nav-btn" onclick="switchTab('more')" data-tab="more"><span class="ic" id="nav-more-ic">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/></svg>
+  </span>Меню</div>
 </nav>
 
 <div id="daily-modal-root"></div>

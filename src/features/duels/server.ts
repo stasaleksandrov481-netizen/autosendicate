@@ -98,8 +98,29 @@ export async function getDuelRoomForSession(session: GameSession, code: string) 
   return { room, profiles: profiles ?? [], cars: cars ?? [], selectedCars, role: room.player_a_id === session.playerId ? 'a' : 'b' };
 }
 
-export async function updateDuelRoom(session: GameSession, action: { action: string; code: string; carId?: number; ready?: boolean; elapsedMs?: number; topSpeedKmh?: number; perfectShifts?: number; missedShifts?: number }) {
+export async function updateDuelRoom(session: GameSession, action: { action: string; code: string; carId?: number; ready?: boolean; distance?: number; speedKmh?: number; elapsedMs?: number; topSpeedKmh?: number; perfectShifts?: number; missedShifts?: number }) {
   const s = createServerSupabase();
+
+  // Live progress is intentionally a lean path: one room read + one update, not the full profile/car hydration every second.
+  if (action.action === 'progress') {
+    const { data: room, error: roomError } = await s.from('duel_rooms_v11').select('*').eq('public_code', action.code).maybeSingle();
+    if (roomError) throw roomError;
+    if (!room) throw new Error('duel room not found');
+    const side = room.player_a_id === session.playerId ? 'a' : room.player_b_id === session.playerId ? 'b' : null;
+    if (!side) throw new Error('FORBIDDEN');
+    if (room.status !== 'racing') throw new Error('duel is not racing');
+    const progress = {
+      distance: Math.max(0, Math.min(5000, Number(action.distance ?? 0))),
+      speedKmh: Math.max(0, Math.min(500, Number(action.speedKmh ?? 0))),
+      elapsedMs: Math.max(0, Math.min(180000, Math.trunc(action.elapsedMs ?? 0))),
+      updatedAt: new Date().toISOString()
+    };
+    const patch = side === 'a' ? { player_a_progress: progress } : { player_b_progress: progress };
+    const { data: updated, error } = await s.from('duel_rooms_v11').update({ ...patch, updated_at: new Date().toISOString() }).eq('id', room.id).eq('status', 'racing').select('*').single();
+    if (error) throw error;
+    return { room: updated, profiles: [], cars: [], selectedCars: [], role: side };
+  }
+
   const current = await getDuelRoomForSession(session, action.code);
   const room = current.room;
   const side = current.role;
@@ -131,7 +152,7 @@ export async function updateDuelRoom(session: GameSession, action: { action: str
       elapsedMs: Math.trunc(action.elapsedMs ?? 0), topSpeedKmh: Number(action.topSpeedKmh ?? 0),
       perfectShifts: Math.trunc(action.perfectShifts ?? 0), missedShifts: Math.trunc(action.missedShifts ?? 0), submittedAt: new Date().toISOString()
     };
-    if (result.elapsedMs < 8000 || result.elapsedMs > 180000 || result.topSpeedKmh < 0 || result.topSpeedKmh > 381) throw new Error('invalid result');
+    if (result.elapsedMs < 2500 || result.elapsedMs > 180000 || result.topSpeedKmh < 0 || result.topSpeedKmh > 500) throw new Error('invalid result');
     const patch = side === 'a' ? { player_a_result: result } : { player_b_result: result };
     const resultColumn = side === 'a' ? 'player_a_result' : 'player_b_result';
     const { data: updated, error } = await s.from('duel_rooms_v11').update({ ...patch, updated_at: new Date().toISOString() }).eq('id', room.id).eq('status', 'racing').is(resultColumn, null).select('*').maybeSingle();
@@ -164,8 +185,9 @@ export async function getOwnedCarsForTelegramUser(telegramId: number) {
   return cars ?? [];
 }
 
-export async function createInlineDuelForAcceptor(actor: TgUser, creatorTelegramId: number, creatorCarId: number, opponentCarId: number, chatId?: number, messageId?: number) {
+export async function createInlineDuelForAcceptor(actor: TgUser, creatorTelegramId: number, creatorCarId: number, opponentCarId: number, chatId?: number, messageId?: number, expectedUsername?: string) {
   if (actor.is_bot) throw new Error('bot cannot duel');
+  if (expectedUsername && String(actor.username || '').toLowerCase() !== expectedUsername.toLowerCase()) throw new Error('challenge addressed to another player');
   if (actor.id === creatorTelegramId) throw new Error('cannot duel yourself');
   const s = createServerSupabase();
   const creatorId = playerIdFromTelegram(creatorTelegramId);

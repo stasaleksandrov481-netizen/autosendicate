@@ -9,7 +9,7 @@ const v15Start = runtime.indexOf('ECONOMY + WORK + UX UPDATE 15');
 const v15 = v15Start >= 0 ? runtime.slice(v15Start) : '';
 const checks = [
   ['M1 realistic car ladder', runtime.includes('carPrices:{1:60000') && runtime.includes('25:280000000') && runtime.includes('applyEconomyCarPrices(carsDB)')],
-  ['M1 race reward rebalance', runtime.includes('power*54+lvl*1800') && runtime.includes('Math.max(2500,Math.round((Number(opp.reward)||0)*0.10))')],
+  ['M1 race reward rebalance', (runtime.includes('power*54+lvl*1800') || runtime.includes('power*105+lvl*3500')) && runtime.includes('Math.max(2500,Math.round((Number(opp.reward)||0)*0.10))')],
   ['M1 casino uses SYND', runtime.includes('state.coins-=bet; state.stats.casinoWagered+=bet') && v15.includes('Casino is back on Syndicate Coins') && !v15.includes("chipSpend(bet")],
   ['M1 chips are premium', v15.includes('ПРЕМИАЛЬНАЯ ЭКОНОМИКА') && v15.includes('МАГАЗИН ЗА ЧИПЫ') && v15.includes('boss_win')],
   ['M2 ordinary jobs pay SYND', runtime.includes('state.coins=(Number(state.coins)||0)+job.reward') && v15.includes('РЕЗЕРВНЫЙ ЗАРАБОТОК · ТОЛЬКО SYND')],
@@ -18,8 +18,8 @@ const checks = [
   ['M2 tow passive shift', v15.includes('TOW_SHIFT_MS=15*60*1000') && v15.includes('towTruckOwned') && v15.includes('collectTowShiftV15')],
   ['M2 chip contracts separate screen', v15.includes("screen.id='screen-chips'") && v15.includes('Доставка редких деталей') && v15.includes('chipQuestProgressV15')],
   ['M3 mobile tap scale', css.includes('--tap-min:46px') && css.includes('body{font-size:15px}')],
-  ['M3 garage vertical gesture preserved', css.includes('touch-action:pan-x pan-y!important') && runtime.includes('if(horizontal)e.preventDefault()') && css.includes('74vw')],
-  ['M3 profile cleanup/menu', v15.includes("screen.id='screen-more'") && v15.includes('Чаты, кланы, кейсы и сервисы') && v15.includes('moveProfileExtrasV15')],
+  ['M3 garage vertical gesture preserved', css.includes('touch-action:pan-x pan-y pinch-zoom!important') && !runtime.includes('if(horizontal)e.preventDefault()') && css.includes('78vw')],
+  ['M3 profile cleanup/menu', shell.includes('id="screen-more"') && shell.includes('Чаты') && shell.includes('Кланы') && shell.includes('Кейсы') && shell.includes('data-tab="more"') && v15.includes('moveProfileExtrasV15')],
   ['M3 wanted SVG', v15.includes('wanted-icon-v15') && v15.includes('<svg class="wanted-icon-v15"')],
   ['M3 horizontal dealership', v15.includes("showroom-horizontal-v15") && css.includes('scroll-snap-type:x mandatory') && css.includes('.dealer-card-v15')],
   ['M4 race cars visible', v15.includes('cine-vehicle-img-v15') && css.includes('.cine-car[data-rival="0"]{bottom:58px') && css.includes('.cine-car[data-rival="1"]{bottom:8px') && css.includes('visibility:visible!important')],

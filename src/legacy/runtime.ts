@@ -299,8 +299,9 @@ const ECONOMY_V12_6 = {
   casinoMax:()=>Math.max(1000,Math.min(Number(state?.coins)||0,250000,5000+(Number(state?.level)||1)*7500)),
   raceReward:(opp:any)=>{
     const power=Math.max(100,Number(opp?.power)||200),lvl=Math.max(1,Number(opp?.unlockLevel)||1);
-    const base=Math.max(9000,Math.round(2500+power*54+lvl*1800));
-    return Math.round(base*(opp?.boss?1.45:1));
+    // v16: motorsport is the primary money source; even starter races clearly beat taxi work.
+    const base=Math.max(24000,Math.round(9000+power*105+lvl*3500));
+    return Math.round(base*(opp?.boss?1.55:1));
   }
 };
 function applyEconomyCarPrices(list:any[]=carsDB){list.forEach((car:any)=>{const v=(ECONOMY_V12_6.carPrices as any)[Number(car.id)];if(Number.isFinite(v))car.price=v;});return list;}
@@ -570,7 +571,7 @@ function tapLogo(){
 }
 
 /* ==================== NAV ==================== */
-const TAB_MAP = {garage:0,shop:1,'duel-select':2,casino:3,profile:4};
+const TAB_MAP = {garage:0,shop:1,'duel-select':2,casino:3,more:4};
 function switchTab(tabId){
   if(raceCtx && !raceCtx.finished && document.getElementById('screen-race')?.classList.contains('active') && tabId!=='race'){
     if(!confirm('Заезд ещё не закончен. Покинуть трассу? Вход и топливо не возвращаются.')) return;
@@ -3007,7 +3008,7 @@ async function claimPvpResults(){
   chooseLaunch=function(mode){
     v8ChooseLaunch(mode);const c=raceCtx;if(!c)return;
     c.launchQuality=clamp(Number(c.launchQuality)||0,0,1);c.launchImpulse=1.02+c.launchQuality*.22;
-    c.speed=0;c.distance=(c.chase||c.isPolice)?80:0;c.aiSpeed=0;c.aiDistance=0;c.aiStartDelay=(c.chase||c.isPolice)?.05:(.12+rand()*.22);
+    c.speed=0;c.distance=(c.chase||c.isPolice)?80:0;c.aiSpeed=0;c.aiDistance=0;c.aiStartDelay=(c.chase||c.isPolice)?1.15:(.12+rand()*.22);
     c.rpm=2500+c.launchQuality*3100;
   };
 
@@ -3131,17 +3132,25 @@ async function claimPvpResults(){
   }
 
   function simulateChaseAiV14(c,dt){
+    // v16 chase: the patrol has inertia and reacts to the gap instead of teleporting onto the player.
+    // A clean, powerful build can genuinely extend the gap; braking/missed shifts let DPS close it.
     if(c.elapsed<c.aiStartDelay)return;
-    const car=activeCar(),hp=Math.max(120,getEffectivePower(car)),powerFactor=clamp(hp/300,.55,2.85);
+    const car=activeCar(),hp=Math.max(120,getEffectivePower(car));
+    const powerScore=clamp((hp-120)/1080,0,1);
     const ideality=c.shiftCount?clamp((c.perfectShifts*1.2+c.goodShifts*.65-c.errors*.8)/Math.max(1,c.shiftCount),-.5,1):0;
-    const pressure=(c.brake?1.28:1)*(c.gas?1:1.08)*(c.errors>0?1.04:1);
-    const cruise=Math.max(c.maxSpeed*.66,c.speed*1.015+7);
-    const target=clamp(cruise*pressure*(1-ideality*.025),0,c.maxSpeed*1.075);
-    const accel=clamp((.76+powerFactor*.22)*1.20,.82,1.75);
-    c.aiSpeed+=(target-c.aiSpeed)*Math.min(1,dt*accel);
-    if(c.brake)c.aiSpeed=Math.min(c.maxSpeed*1.075,c.aiSpeed+18*dt);
-    c.aiSpeed=clamp(c.aiSpeed,0,c.maxSpeed*1.075);
+    const gap=Math.max(-40,(Number(c.distance)||0)-(Number(c.aiDistance)||0));
+    const playerMax=Math.max(145,Number(c.maxSpeed)||220);
+    const patrolCap=playerMax*(.985-powerScore*.055);
+    const closePressure=gap<28?7:gap<55?4:gap<95?1.5:0;
+    const mistakePressure=(c.brake?19:0)+(!c.gas?7:0)+(c.errors>0?Math.min(5,c.errors*1.25):0);
+    const cleanEscapeBonus=Math.max(0,ideality)*7+powerScore*5;
+    const target=clamp((Number(c.speed)||0)+closePressure+mistakePressure-cleanEscapeBonus,72,patrolCap);
+    const warmup=clamp((c.elapsed-c.aiStartDelay)/4.2,.18,1);
+    const response=(.46+(1-powerScore)*.10)*warmup;
+    c.aiSpeed+=(target-c.aiSpeed)*Math.min(1,dt*response);
+    c.aiSpeed=clamp(c.aiSpeed,0,patrolCap);
     c.aiDistance=Math.max(0,c.aiDistance+(c.aiSpeed/3.6)*dt);
+    c.chaseGap=gap;
   }
 
   simulateRace=function(dt){
@@ -3184,7 +3193,7 @@ async function claimPvpResults(){
       else if(c.speed>180&&rand()<.48){showAction('СКОРОСТНОЙ УЧАСТОК · ДОРОГА СЖИМАЕТСЯ');}
     }
     if(c.chase||c.isPolice){
-      if(c.aiDistance>=c.distance && c.distance>84){finishRace(false,c);return;}
+      if(c.elapsed>4.2 && c.aiDistance>=c.distance-1.5 && c.distance>90){finishRace(false,c);return;}
       if(c.distance>=c.trackLength){c.playerFinishedAt=c.elapsed;finishRace(true,c);return;}
     }else{
       if(c.aiDistance>=c.trackLength&&!c.aiFinishedAt)c.aiFinishedAt=c.elapsed;
@@ -4294,8 +4303,10 @@ if (typeof window !== 'undefined') {
     state.coins-=price;state.stats.totalSpent+=price;m[part]=100;saveState();showToast('ТО выполнено · '+part);renderGarage();
   }
   function renderMaintenance(carId){
-    const m=maintenanceFor(carId),parts=[['oil','Масло'],['tires','Шины'],['engine','Двигатель']];
-    return '<div class="maintenance-card"><div class="v8-section-head"><b>ТО И ИЗНОС</b><span>Состояние</span></div>'+parts.map(x=>'<div class="maintenance-row"><span>'+x[1]+'</span><b>'+Math.round(m[x[0]])+'%</b><button onclick="servicePart('+carId+',\''+x[0]+'\')">ОБСЛУЖИТЬ</button></div>').join('')+'</div>';
+    const m=maintenanceFor(carId),car=carsDB.find((x:any)=>x.id===Number(carId));if(!car)return '';
+    const parts=[['oil','Масло'],['tires','Шины'],['engine','Двигатель']];
+    const price=Math.max(50,Math.round(car.price*.025));
+    return '<section class="garage-service-dock-v151"><div class="garage-service-head-v151"><div><span>СЕРВИС АКТИВНОЙ МАШИНЫ</span><b>'+escapeHtml(car.name)+'</b></div><small>ТО от '+fmt(price)+' SYND</small></div><div class="garage-service-grid-v151">'+parts.map((x:any)=>{const val=Math.round(Number(m[x[0]])||0),tone=val<35?'danger':val<70?'warn':'ok';return '<button class="garage-service-item-v151 '+tone+'" onclick="servicePart('+carId+',\''+x[0]+'\')"><span>'+x[1]+'</span><b>'+val+'%</b><i style="--service:'+val+'%"></i><small>ОБСЛУЖИТЬ</small></button>';}).join('')+'</div></section>';
   }
   (window as any).servicePart=servicePart;
 
@@ -4322,21 +4333,20 @@ if (typeof window !== 'undefined') {
     const root=document.getElementById(targetId);if(!root)return;
     root.classList.add('car-carousel','garage-carousel-h');
     root.innerHTML=cars.map((car:any)=>{
-      const isActive=state.activeCarId===car.id;
-      return '<article class="carousel-card'+(isActive?' is-active':'')+'" data-car-id="'+car.id+'">'+
-        '<div class="car-thumb" onclick="openDetail('+car.id+')">'+carArtSVG(car)+
-        '<div class="tier-badge">'+escapeHtml(String(car.tier||''))+'</div>'+
-        '<div class="power-badge">'+fmt(getEffectivePower(car))+' л.с.</div></div>'+
-        '<div class="car-info-box"><div class="car-title">'+escapeHtml(car.name)+'</div>'+
-        '<div class="car-stats"><span>'+fmt(getEffectivePower(car))+' л.с.</span><span>'+(isActive?'АКТИВНА':'В ГАРАЖЕ')+'</span></div>'+
-        '<p class="carousel-desc">'+escapeHtml(car.flavor||'')+'</p>'+(owned?plateVisualForCar(car.id):'')+
-        '<div class="btn-row carousel-actions">'+
-        (owned
-          ? ('<button class="btn btn-select'+(isActive?' selected-mark':'')+'" '+(isActive?'disabled':'')+' onclick="selectCar('+car.id+')">'+(isActive?'АКТИВНА':'ВЫБРАТЬ')+'</button>'+
-             '<button class="btn btn-ghost" onclick="openDetail('+car.id+')">КАРТОЧКА</button>'+
-             '<button class="btn btn-ghost" onclick="openPlatePicker('+car.id+')">НОМЕР</button>')
-          : ('<button class="btn btn-buy" onclick="buyCar('+car.id+')">КУПИТЬ · '+fmt(car.price)+' SYND</button>'))+
-        '</div></div></article>';
+      const isActive=state.activeCarId===car.id,eff=getEffectivePower(car),fuel=getFuel(car.id),cond=getCondition(car.id);
+      const plate=owned?plateVisualForCar(car.id):'';
+      return '<article class="carousel-card garage-card-v151'+(isActive?' is-active':'')+'" data-car-id="'+car.id+'">'+
+        '<div class="car-thumb garage-media-v151" onclick="openDetail('+car.id+')">'+carArtSVG(car)+
+          '<div class="garage-media-shade-v151"></div><div class="tier-badge">'+escapeHtml(String(car.tier||''))+'</div><div class="power-badge">'+fmt(eff)+' л.с.</div></div>'+
+        '<div class="car-info-box garage-copy-v151">'+
+          '<div class="garage-card-head-v151"><div><small>'+escapeHtml(String(CAT_LABELS[car.cat]||car.cat||'AUTO'))+'</small><div class="car-title">'+escapeHtml(car.name)+'</div></div><span class="garage-state-v151 '+(isActive?'active':'')+'">'+(isActive?'АКТИВНА':'В ГАРАЖЕ')+'</span></div>'+
+          (owned?'<div class="garage-spec-grid-v151"><span><small>МОЩНОСТЬ</small><b>'+fmt(eff)+' л.с.</b></span><span><small>ТОПЛИВО</small><b class="'+(fuel<25?'danger':'')+'">'+fuel+'%</b></span><span><small>СОСТОЯНИЕ</small><b class="'+(cond<40?'danger':'')+'">'+cond+'%</b></span></div>':'<p class="carousel-desc">'+escapeHtml(car.flavor||'')+'</p>')+
+          plate+
+          '<div class="carousel-actions garage-actions-v151">'+
+          (owned
+            ? ('<button class="btn btn-select garage-primary-v151'+(isActive?' selected-mark':'')+'" '+(isActive?'disabled':'')+' onclick="selectCar('+car.id+')">'+(isActive?'ВЫБРАНА ✓':'ВЫБРАТЬ')+'</button><div class="garage-secondary-actions-v151"><button class="btn btn-ghost" onclick="openDetail('+car.id+')">КАРТОЧКА</button><button class="btn btn-ghost" onclick="openPlatePicker('+car.id+')">НОМЕР</button></div>')
+            : ('<button class="btn btn-buy" onclick="buyCar('+car.id+')">КУПИТЬ · '+fmt(car.price)+' SYND</button>'))+
+          '</div></div></article>';
     }).join('');
   }
   const oldGarage=renderGarage, oldShop=renderShop;
@@ -4379,7 +4389,7 @@ if (typeof window !== 'undefined') {
 
   // Chat badge + 99+ cap.
   function renderChatBadge(){
-    const hub=[...document.querySelectorAll('.hub-card')].find((x:any)=>x.textContent?.includes('Чат'));
+    const hub=document.getElementById('menu-chat-v151')||[...document.querySelectorAll('.hub-card')].find((x:any)=>x.textContent?.includes('Чат')&&getComputedStyle(x).display!=='none');
     if(hub&&!hub.querySelector('.chat-badge')){const b=document.createElement('span');b.className='chat-badge';b.id='chat-unread-badge';hub.appendChild(b);}
     updateHeaderFeature();
   }
@@ -4500,8 +4510,9 @@ if (typeof window !== 'undefined') {
     root.addEventListener('scroll',()=>{if(!raf)raf=requestAnimationFrame(focusCenter)},{passive:true});
     root.addEventListener('wheel',(e:any)=>{if(Math.abs(e.deltaY)>Math.abs(e.deltaX)){e.preventDefault();root.scrollLeft+=e.deltaY;}},{passive:false});
     root.addEventListener('keydown',(e:any)=>{if(e.key!=='ArrowLeft'&&e.key!=='ArrowRight')return;e.preventDefault();const cards=[...root.querySelectorAll('.carousel-card')];const current=cards.findIndex((x:any)=>x.classList.contains('is-centered-v14'));const next=Math.max(0,Math.min(cards.length-1,current+(e.key==='ArrowRight'?1:-1)));(cards[next] as HTMLElement)?.scrollIntoView({behavior:'smooth',block:'nearest',inline:'center'});});
-    root.addEventListener('touchstart',(e:any)=>{const t=e.touches?.[0];if(!t)return;touchX=t.clientX;touchY=t.clientY;horizontal=false;},{passive:true});
-    root.addEventListener('touchmove',(e:any)=>{const t=e.touches?.[0];if(!t)return;const dx=Math.abs(t.clientX-touchX),dy=Math.abs(t.clientY-touchY);if(!horizontal&&dx>8&&dx>dy*1.05)horizontal=true;if(horizontal)e.preventDefault();},{passive:false});
+    // Let the browser negotiate horizontal carousel vs vertical page scrolling.
+    // No touchmove preventDefault here: that was the reason the garage area trapped vertical swipes.
+    root.style.touchAction='pan-x pan-y pinch-zoom';
     requestAnimationFrame(()=>{const active=root.querySelector('.carousel-card.is-active') as HTMLElement|null;if(active)active.scrollIntoView({block:'nearest',inline:'center'});focusCenter();});
   }
   function refreshCarDependentUiV14(){
@@ -4617,9 +4628,9 @@ if (typeof window !== 'undefined') {
 
   function workCarV15(){return carsDB.find((c:any)=>c.id===state.activeCarId)||carsDB[0];}
   function workPowerV15(car:any){return Math.max(100,Number(getEffectivePower(car))||Number(car?.power)||150);}
-  function taxiRewardV15(car:any){const p=workPowerV15(car),price=Math.max(60000,Number(car?.price)||60000);return Math.round((8000+p*35+Math.sqrt(price)*9)/500)*500;}
-  function taxiDurationV15(car:any){const p=workPowerV15(car);return Math.max(4,Math.min(11,Math.round(12-p/125)));}
-  function theftRewardV15(car:any){return Math.round((26000+workPowerV15(car)*65)/1000)*1000;}
+  function taxiRewardV15(car:any){const p=workPowerV15(car),price=Math.max(60000,Number(car?.price)||60000);return Math.max(1200,Math.round((650+p*4.5+Math.sqrt(price)*.34)/100)*100);}
+  function taxiDurationV15(car:any){const p=workPowerV15(car);return Math.max(7,Math.min(17,Math.round(18-p/100)));}
+  function theftRewardV15(car:any){return Math.max(7000,Math.round((6500+workPowerV15(car)*18)/500)*500);}
   function chipQuestProgressV15(){const w=ensureWorkV15();w.chipQuestProgress=Math.min(CHIP_QUEST_TARGET,w.chipQuestProgress+1);}
   function clearActiveWorkV15(){const w=ensureWorkV15();w.activeType='';w.activeUntil=0;w.activeStartedAt=0;w.activeReward=0;w.activeCarId=0;}
   function moneyAddV15(amount:number,reason:string){amount=Math.max(0,Math.round(amount));if(!amount)return;state.coins+=amount;state.stats.totalEarned+=amount;showToast(reason+' · +'+fmt(amount)+' SYND');haptic('success');}
@@ -4657,8 +4668,8 @@ if (typeof window !== 'undefined') {
   }
 
   function buyTowTruckV15(){const w=ensureWorkV15();if(w.towTruckOwned)return;if(state.coins<TOW_TRUCK_PRICE){showToast('Не хватает '+fmt(TOW_TRUCK_PRICE-state.coins)+' SYND');return;}state.coins-=TOW_TRUCK_PRICE;state.stats.totalSpent+=TOW_TRUCK_PRICE;w.towTruckOwned=true;updateHeader();saveState();renderJobs();showToast('ЭВАКУАТОР КУПЛЕН');}
-  function startTowShiftV15(){const w=ensureWorkV15();if(!w.towTruckOwned){buyTowTruckV15();return;}if(w.towTruckUntil>Date.now()){showToast('Эвакуатор уже на смене');return;}const lvl=Math.max(1,Number(state.level)||1);w.towTruckStartedAt=Date.now();w.towTruckUntil=Date.now()+TOW_SHIFT_MS;w.towTruckReward=Math.round((115000+lvl*8500)/5000)*5000;saveState();renderJobs();showToast('Эвакуатор вышел на смену');}
-  function collectTowShiftV15(){const w=ensureWorkV15();if(!w.towTruckUntil)return;if(Date.now()<w.towTruckUntil){showToast('Смена ещё не закончена');return;}const reward=Math.max(50000,Number(w.towTruckReward)||115000);w.towTruckUntil=0;w.towTruckStartedAt=0;w.towTruckReward=0;recordContractEvent('job',1);moneyAddV15(reward,'ЭВАКУАТОР · СМЕНА ЗАКРЫТА');addXP(12);updateHeader();saveState();renderJobs();}
+  function startTowShiftV15(){const w=ensureWorkV15();if(!w.towTruckOwned){buyTowTruckV15();return;}if(w.towTruckUntil>Date.now()){showToast('Эвакуатор уже на смене');return;}const lvl=Math.max(1,Number(state.level)||1);w.towTruckStartedAt=Date.now();w.towTruckUntil=Date.now()+TOW_SHIFT_MS;w.towTruckReward=Math.round((30000+lvl*2500)/1000)*1000;saveState();renderJobs();showToast('Эвакуатор вышел на смену');}
+  function collectTowShiftV15(){const w=ensureWorkV15();if(!w.towTruckUntil)return;if(Date.now()<w.towTruckUntil){showToast('Смена ещё не закончена');return;}const reward=Math.max(18000,Number(w.towTruckReward)||30000);w.towTruckUntil=0;w.towTruckStartedAt=0;w.towTruckReward=0;recordContractEvent('job',1);moneyAddV15(reward,'ЭВАКУАТОР · СМЕНА ЗАКРЫТА');addXP(12);updateHeader();saveState();renderJobs();}
   function claimChipQuestV15(){const w=ensureWorkV15();if(w.chipQuestClaimed||w.chipQuestProgress<CHIP_QUEST_TARGET)return;w.chipQuestClaimed=true;addChipsV15(2,'daily_work_contract');showToast('КОНТРАКТ СИНДИКАТА · +2 ЧИПА');saveState();renderChipCenterV15();}
   function buyChipItemV15(item:string){
     const car=workCarV15();if(!car)return;
@@ -4692,7 +4703,7 @@ if (typeof window !== 'undefined') {
     root.innerHTML=activeHtml+
       '<div class="work-hero-v15"><span>РЕЗЕРВНЫЙ ЗАРАБОТОК · ТОЛЬКО SYND</span><h2>Подработка без вступительного взноса</h2><p>Если баланс просел — восстановись без ставок. Текущая машина: <b>'+escapeHtml(car.name)+'</b> · '+fmt(workPowerV15(car))+' л.с. Чем она сильнее, тем выгоднее такси и перегон.</p></div>'+
       '<div class="work-grid-v15">'+
-      '<article class="work-card-v15 taxi"><div class="work-icon-v15">TAXI</div><div><h3>Работа в такси</h3><p>Анимированный маршрут на текущей машине. Мощность сокращает время заказа и увеличивает выплату.</p><div class="work-meta-v15"><span>Оплата <b>+'+fmt(taxiRewardV15(car))+' SYND</b></span><span>Маршрут <b>'+taxiDurationV15(car)+' сек.</b></span></div></div><button '+(active?'disabled':'')+' onclick="startWorkV15(\'taxi\')">ВЗЯТЬ ЗАКАЗ</button></article>'+
+      '<article class="work-card-v15 taxi"><div class="work-icon-v15">TAXI</div><div><h3>Работа в такси</h3><p>Базовая страховка на случай нулевого баланса. Мощность немного ускоряет заказ, но основные деньги теперь дают гонки и дуэли.</p><div class="work-meta-v15"><span>Оплата <b>+'+fmt(taxiRewardV15(car))+' SYND</b></span><span>Маршрут <b>'+taxiDurationV15(car)+' сек.</b></span></div></div><button '+(active?'disabled':'')+' onclick="startWorkV15(\'taxi\')">ВЗЯТЬ ЗАКАЗ</button></article>'+
       '<article class="work-card-v15 theft"><div class="work-icon-v15">RISK</div><div><h3>Автоугон / перегон</h3><p>Рискованный маршрут. ДПС может перехватить тебя: провал — штраф и розыск, успех — повышенная выплата.</p><div class="work-meta-v15"><span>Успех <b>+'+fmt(theftRewardV15(car))+' SYND</b></span><span>Риск ДПС <b>'+Math.round(Math.min(.42,.30+(Number(state.heat)||0)*.025)*100)+'%</b></span></div></div><button '+(active?'disabled':'')+' onclick="startWorkV15(\'theft\')">РИСКНУТЬ</button></article>'+
       '<article class="work-card-v15 tow"><div class="work-icon-v15">TOW</div><div><h3>Эвакуатор</h3><p>Пассивный заработок: купи эвакуатор, отправь его на 15-минутную смену и забери Синдикат коины позже.</p><div class="work-meta-v15"><span>Статус <b>'+(w.towTruckOwned?(w.towTruckUntil?(towReady?'СМЕНА ГОТОВА':'НА СМЕНЕ'):'ГОТОВ'):'НЕ КУПЛЕН')+'</b></span><span>'+(w.towTruckUntil&&!towReady?'Осталось <b>'+Math.ceil(towRemaining/60000)+' мин.</b>':'Цена <b>'+fmt(TOW_TRUCK_PRICE)+' SYND</b>')+'</span></div></div>'+(w.towTruckOwned?(w.towTruckUntil?'<button '+(towReady?'':'disabled')+' onclick="collectTowShiftV15()">'+(towReady?'ЗАБРАТЬ +'+fmt(w.towTruckReward):'ИДЁТ СМЕНА')+'</button>':'<button onclick="startTowShiftV15()">ОТПРАВИТЬ НА СМЕНУ</button>'):'<button '+(state.coins<TOW_TRUCK_PRICE?'disabled':'')+' onclick="buyTowTruckV15()">КУПИТЬ ЭВАКУАТОР</button>')+'</article>'+
       '</div><button class="chip-center-link-v15" onclick="switchTab(\'chips\')">ЧИП-КОНТРАКТЫ И ПРЕМИАЛЬНЫЙ МАГАЗИН →</button>';
@@ -4717,20 +4728,20 @@ if (typeof window !== 'undefined') {
   };
   (window as any).renderShop=renderShop;
 
-  // Profile cleanup: career stays in profile, social/service clutter moves to independent menu.
-  function ensureMoreMenuV15(){
-    const main=document.getElementById('main-scroll');if(!main)return null;let screen=document.getElementById('screen-more');
-    if(!screen){screen=document.createElement('div');screen.id='screen-more';screen.className='screen';screen.innerHTML='<div class="back-link" onclick="switchTab(\'profile\')">← Профиль</div><div class="section-title"><span>Меню</span></div><div class="more-grid-v15" id="more-grid-v15"></div>';main.appendChild(screen);}return screen;
-  }
+  // Profile cleanup: career stays in profile; social/service actions live in the permanent bottom Menu tab.
+  function ensureMoreMenuV15(){return document.getElementById('screen-more');}
   function moveProfileExtrasV15(){
-    ensureMoreMenuV15();const grid=document.querySelector('#screen-profile .hub-grid') as HTMLElement|null,more=document.getElementById('more-grid-v15');if(!grid||!more)return;
-    const keep=['Районы','Контракты','Подработка','Достижения','Награда дня'];
-    [...grid.querySelectorAll('.hub-card')].forEach((card:any)=>{const label=String(card.querySelector('.lbl')?.textContent||'');if(!keep.includes(label))more.appendChild(card);});
-    if(!document.getElementById('more-chips-v15')){const chip=document.createElement('div');chip.id='more-chips-v15';chip.className='hub-card';chip.setAttribute('onclick','switchTab(\'chips\')');chip.innerHTML='<div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2 20 7v10l-8 5-8-5V7z"/><path d="m8 12 4-6 4 6-4 6z"/></svg></div><div class="lbl">Чип-контракты</div><div class="sub">Редкая валюта и магазин</div>';more.appendChild(chip);}
+    const grid=document.querySelector('#screen-profile .hub-grid') as HTMLElement|null;if(!grid)return;
+    const keep=new Set(['Районы','Контракты','Подработка','Достижения','Награда дня','Меню']);
+    [...grid.querySelectorAll('.hub-card')].forEach((card:any)=>{const label=String(card.querySelector('.lbl')?.textContent||'');card.style.display=keep.has(label)?'':'none';});
     let menu=document.getElementById('hub-more-v15');if(!menu){menu=document.createElement('div');menu.id='hub-more-v15';menu.className='hub-card hub-more-v15';menu.setAttribute('onclick','switchTab(\'more\')');menu.innerHTML='<div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/></svg></div><div class="lbl">Меню</div><div class="sub">Чаты, кланы, кейсы и сервисы</div>';grid.appendChild(menu);}
+    menu.style.display='';
+  }
+  function normalizeMenuBackLinksV151(){
+    ['chat','clans','friends','cases','leaderboard','market','bank','referrals','settings','chips'].forEach((id)=>{const screen=document.getElementById('screen-'+id),back=screen?.querySelector('.back-link') as HTMLElement|null;if(back){back.setAttribute('onclick','switchTab(\'more\')');back.textContent='← Меню';}});
   }
   const profileBaseV15=renderProfile;
-  renderProfile=function(){profileBaseV15();moveProfileExtrasV15();};
+  renderProfile=function(){profileBaseV15();moveProfileExtrasV15();normalizeMenuBackLinksV151();};
   (window as any).renderProfile=renderProfile;
 
   // Wanted uses a dedicated SVG mark instead of another emoji/star-only status.
@@ -4756,7 +4767,7 @@ if (typeof window !== 'undefined') {
   (window as any).finishRace=finishRace;
 
   // Refresh final surfaces after all overrides are installed.
-  ensureChipCenterV15();renderChipCenterV15();renderProfile();renderShop();if(document.getElementById('screen-jobs')?.classList.contains('active'))renderJobs();
+  ensureChipCenterV15();renderChipCenterV15();renderProfile();normalizeMenuBackLinksV151();renderShop();if(document.getElementById('screen-jobs')?.classList.contains('active'))renderJobs();
 })();
 
 /* ==================== UPDATE 15 SAFETY / CONSISTENCY GUARDS ==================== */
@@ -4823,4 +4834,175 @@ if (typeof window !== 'undefined') {
     });
   };
   (window as any).showRaceCockpit=showRaceCockpit;
+})();
+
+/* ==================== UPDATE 16 · GARAGE / RACE / LIVE DUELS ==================== */
+(() => {
+  function snapGarageV16(root:HTMLElement){
+    const cards=[...root.querySelectorAll('.garage-card-v151,.carousel-card')] as HTMLElement[];if(!cards.length)return;
+    const center=root.scrollLeft+root.clientWidth/2;
+    let best=cards[0],dist=Infinity;
+    for(const card of cards){const d=Math.abs((card.offsetLeft+card.offsetWidth/2)-center);if(d<dist){dist=d;best=card;}}
+    const left=best.offsetLeft-(root.clientWidth-best.offsetWidth)/2;
+    root.scrollTo({left:Math.max(0,left),behavior:'smooth'});
+  }
+
+  function bindGarageCarouselV16(){
+    const root=document.getElementById('garage-list') as HTMLElement|null;
+    if(!root||root.dataset.v16DragBound==='1')return;
+    root.dataset.v16DragBound='1';
+    root.classList.add('garage-drag-v16');
+    root.style.touchAction='pan-y pinch-zoom';
+    let pointerId=-1,startX=0,startY=0,startScroll=0,dragging=false,decided=false;
+    const clear=(snap=true)=>{
+      if(pointerId>=0&&root.hasPointerCapture?.(pointerId)){try{root.releasePointerCapture(pointerId);}catch{}}
+      pointerId=-1;dragging=false;decided=false;root.classList.remove('is-dragging-v16');
+      if(snap)window.setTimeout(()=>snapGarageV16(root),18);
+    };
+    root.addEventListener('pointerdown',(event:PointerEvent)=>{
+      if(event.pointerType==='mouse'&&event.button!==0)return;
+      if((event.target as HTMLElement)?.closest('button,a,input,select,textarea,[data-no-drag]'))return;
+      pointerId=event.pointerId;startX=event.clientX;startY=event.clientY;startScroll=root.scrollLeft;dragging=false;decided=false;
+    },{passive:true});
+    root.addEventListener('pointermove',(event:PointerEvent)=>{
+      if(pointerId!==event.pointerId)return;
+      const dx=event.clientX-startX,dy=event.clientY-startY;
+      if(!decided&&Math.max(Math.abs(dx),Math.abs(dy))>6){decided=true;dragging=Math.abs(dx)>Math.abs(dy)*1.08;if(dragging){try{root.setPointerCapture(event.pointerId);}catch{}root.classList.add('is-dragging-v16');}}
+      if(!dragging)return;
+      event.preventDefault();
+      root.scrollLeft=startScroll-dx;
+    },{passive:false});
+    root.addEventListener('pointerup',(event:PointerEvent)=>{if(pointerId===event.pointerId)clear(true);},{passive:true});
+    root.addEventListener('pointercancel',(event:PointerEvent)=>{if(pointerId===event.pointerId)clear(false);},{passive:true});
+    root.addEventListener('dragstart',(event)=>event.preventDefault());
+  }
+
+  const garageBaseV16=renderGarage;
+  renderGarage=function(){garageBaseV16();bindGarageCarouselV16();};
+  (window as any).renderGarage=renderGarage;
+  bindGarageCarouselV16();
+
+  function raceMarkerSvgV16(type:'player'|'rival'|'cop'){
+    if(type==='cop')return '<svg class="race-marker-svg-v16 cop" viewBox="0 0 72 34" aria-hidden="true"><path d="M14 23 19 13c1-3 4-5 8-5h19c4 0 7 2 9 5l5 10 5 2v5H7v-5l7-2Z"/><path class="glass" d="M24 12h10v8H19l3-6c.5-1.2 1.1-1.8 2-2Zm14 0h8c2 0 3.5 1 4.5 3l2 5H38v-8Z"/><rect class="light red" x="31" y="4" width="6" height="4" rx="1"/><rect class="light blue" x="38" y="4" width="6" height="4" rx="1"/><circle cx="20" cy="29" r="4"/><circle cx="54" cy="29" r="4"/></svg>';
+    return '<svg class="race-marker-svg-v16 '+type+'" viewBox="0 0 72 34" aria-hidden="true"><path d="M10 24 16 15c2-3 5-5 9-5h22c4 0 7 2 10 6l5 8 5 2v4H5v-4l5-2Z"/><path class="glass" d="M25 13h10v8H18l4-6c.8-1.3 1.7-2 3-2Zm14 0h8c2 0 4 1 5 3l3 5H39v-8Z"/><path class="accent" d="M9 24h53l4 2H6l3-2Z"/><circle cx="20" cy="29" r="4"/><circle cx="54" cy="29" r="4"/></svg>';
+  }
+
+  function lanePositionsV16(count:number){
+    if(count<=2)return [31,69];
+    if(count===3)return [20,50,80];
+    if(count===4)return [13,38,63,87];
+    return Array.from({length:count},(_,i)=>10+(80*i/Math.max(1,count-1)));
+  }
+
+  function decorateRaceV16(){
+    const c:any=raceCtx;if(!c)return;
+    const map=document.querySelector('.race-map.race-cinematic') as HTMLElement|null;if(!map)return;
+    map.classList.add('race-v16');
+    const player=document.getElementById('cine-player') as HTMLElement|null;
+    const rivals=[...map.querySelectorAll('.cine-car[data-rival]')] as HTMLElement[];
+    const entries=[player,...rivals].filter(Boolean) as HTMLElement[];
+    const lanes=lanePositionsV16(entries.length);
+    entries.forEach((el,i)=>{el.style.setProperty('--lane-y-v16',lanes[i]+'%');el.dataset.laneV16=String(i);});
+    const playerBody=player?.querySelector('.cine-car-body') as HTMLElement|null;if(playerBody)playerBody.innerHTML=raceMarkerSvgV16('player');
+    rivals.forEach((el,i)=>{const body=el.querySelector('.cine-car-body') as HTMLElement|null;if(body)body.innerHTML=raceMarkerSvgV16((c.chase||c.isPolice)&&i===0?'cop':'rival');});
+    const asphalt=map.querySelector('.cine-asphalt') as HTMLElement|null;
+    if(asphalt){let guides=asphalt.querySelector('.lane-guides-v16') as HTMLElement|null;if(!guides){guides=document.createElement('div');guides.className='lane-guides-v16';asphalt.prepend(guides);}const count=entries.length;guides.innerHTML=Array.from({length:Math.max(0,count-1)},(_,i)=>'<i style="top:'+((i+1)*100/count)+'%"></i>').join('');}
+    const hud=map.querySelector('.cine-hud-bar') as HTMLElement|null;
+    if(hud&&!hud.classList.contains('hud-v16')){
+      hud.classList.add('hud-v16');
+      hud.innerHTML='<div class="cine-distance-row-v16"><span id="cine-progress-label">ВЫ · 0 м</span><span id="cine-gap-label">СТАРТ</span></div><div class="cine-progress"><i id="cine-progress-fill"></i></div><div class="chase-meter-v16" id="chase-meter-v16"><i id="chase-meter-fill-v16"></i></div>';
+    }
+    map.classList.toggle('chase-v16',!!(c.chase||c.isPolice));
+  }
+
+  const cockpitBaseV16=showRaceCockpit;
+  showRaceCockpit=function(){cockpitBaseV16();decorateRaceV16();};
+  (window as any).showRaceCockpit=showRaceCockpit;
+
+  function applyPrivateRemoteProgressV16(c:any,map:HTMLElement,len:number){
+    if(!c.privateDuelCode)return;
+    const remote=c.privateRemoteProgress;
+    const rival=map.querySelector('.cine-car[data-rival="0"]') as HTMLElement|null;
+    if(rival&&remote){const pct=clamp(Number(remote.distance||0)/Math.max(1,len)*100,0,100);rival.style.left=Math.max(4,Math.min(92,pct*.88+4))+'%';}
+    const now=Date.now();
+    if(c.finished||c._privateProgressBusy||now-Number(c._privateProgressSentAt||0)<900)return;
+    c._privateProgressBusy=true;c._privateProgressSentAt=now;
+    serverFetch('/api/duels/room',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'progress',code:c.privateDuelCode,distance:Number(c.distance)||0,speedKmh:Number(c.speed)||0,elapsedMs:Math.round((Number(c.elapsed)||0)*1000)})})
+      .then(async(r:any)=>{if(!r.ok)throw new Error('progress rejected');return r.json();})
+      .then((payload:any)=>{const room=payload?.room||{},role=c.privateRole||payload?.role;c.privateRole=role;if(role==='a')c.privateRemoteProgress=room.player_b_progress||null;else if(role==='b')c.privateRemoteProgress=room.player_a_progress||null;})
+      .catch(()=>{})
+      .finally(()=>{c._privateProgressBusy=false;});
+  }
+
+  const hudBaseV16=updateRaceHUD;
+  updateRaceHUD=function(){
+    hudBaseV16();
+    const c:any=raceCtx;if(!c)return;
+    const map=document.querySelector('.race-map.race-cinematic.race-v16') as HTMLElement|null;if(!map)return;
+    const len=Math.max(1,Number(c.trackLength)||1);
+    applyPrivateRemoteProgressV16(c,map,len);
+    const distanceLabel=document.getElementById('cine-progress-label');
+    if(distanceLabel)distanceLabel.textContent='ВЫ · '+Math.round(Number(c.distance)||0)+' м';
+    const gapLabel=document.getElementById('cine-gap-label') as HTMLElement|null;
+    if(gapLabel){
+      if(c.chase||c.isPolice){
+        const gap=(Number(c.distance)||0)-(Number(c.aiDistance)||0);
+        gapLabel.textContent=gap>1?'ДПС · '+Math.round(gap)+' м ПОЗАДИ':'ДПС · РЯДОМ';
+        gapLabel.classList.toggle('danger',gap<28);gapLabel.classList.toggle('safe',gap>72);
+        const meter=document.getElementById('chase-meter-fill-v16') as HTMLElement|null;if(meter)meter.style.width=clamp(100-(gap/100)*100,0,100)+'%';
+      }else if(c.privateDuelCode&&c.privateRemoteProgress){
+        const remote=Number(c.privateRemoteProgress.distance)||0,lead=(Number(c.distance)||0)-remote;
+        gapLabel.textContent=(lead>=0?'+':'')+Math.round(lead)+' м · ONLINE';
+      }
+    }
+  };
+  (window as any).updateRaceHUD=updateRaceHUD;
+
+  const privateStartBaseV16=(window as any).__AUTOSYNDICATE_START_PRIVATE_DUEL__;
+  if(typeof privateStartBaseV16==='function'){
+    (window as any).__AUTOSYNDICATE_START_PRIVATE_DUEL__=(payload:any)=>{
+      privateStartBaseV16(payload);
+      if(raceCtx){raceCtx.privateRole=payload?.role;raceCtx.privateRemoteProgress=null;raceCtx.trackLength=402;raceCtx.route='PRIVATE · 402m';renderRaceBrief();}
+    };
+  }
+
+  async function waitPrivateResultV16(code:string){
+    for(let i=0;i<120;i++){
+      await new Promise(resolve=>setTimeout(resolve,1000));
+      try{
+        const response=await serverFetch('/api/duels/room?code='+encodeURIComponent(code),{credentials:'include',cache:'no-store'});if(!response.ok)continue;
+        const payload=await response.json(),room=payload?.room;if(!room||room.status!=='finished')continue;
+        const meId=payload.role==='a'?room.player_a_id:room.player_b_id;
+        const won=room.winner_player_id===meId,draw=!room.winner_player_id;
+        const title=document.querySelector('#race-content .result-title') as HTMLElement|null;
+        const sub=document.querySelector('#race-content .result-sub') as HTMLElement|null;
+        const reward=document.querySelector('#race-content .result-reward') as HTMLElement|null;
+        const box=document.querySelector('#race-content .result-box') as HTMLElement|null;
+        if(title)title.textContent=draw?'НИЧЬЯ · ONLINE':won?'ПОБЕДА · ONLINE':'ПОРАЖЕНИЕ · ONLINE';
+        if(sub)sub.textContent='Результат подтверждён Race Room по времени обоих игроков.';
+        if(reward)reward.textContent='ПРИВАТНАЯ ДУЭЛЬ · 402 м';
+        if(box){box.classList.toggle('win',won&&!draw);box.classList.toggle('lose',!won&&!draw);}
+        return;
+      }catch{}
+    }
+  }
+
+  const finishBaseV16=finishRace;
+  finishRace=function(playerWins:any,cArg:any){
+    const c:any=cArg||raceCtx,code=c?.privateDuelCode;finishBaseV16(playerWins,cArg);
+    if(code){
+      const title=document.querySelector('#race-content .result-title') as HTMLElement|null;
+      const sub=document.querySelector('#race-content .result-sub') as HTMLElement|null;
+      const reward=document.querySelector('#race-content .result-reward') as HTMLElement|null;
+      if(title)title.textContent='ФИНИШ · РЕЗУЛЬТАТ ОТПРАВЛЕН';
+      if(sub)sub.textContent='Ждём финиш соперника и подтверждение Race Room.';
+      if(reward)reward.textContent='ONLINE · СИНХРОНИЗАЦИЯ';
+      void waitPrivateResultV16(String(code));
+    }
+  };
+  (window as any).finishRace=finishRace;
+
+  // Re-render current surfaces after final V16 overrides are in place.
+  if(document.getElementById('screen-garage')?.classList.contains('active'))renderGarage();
+  if(document.getElementById('screen-shop')?.classList.contains('active'))renderShop();
 })();

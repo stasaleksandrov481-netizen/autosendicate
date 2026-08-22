@@ -1,8 +1,8 @@
 import 'server-only';
 import { createServerSupabase } from '@/lib/supabase/server';
 import { getServerEnv } from '@/lib/env';
-import type { TgMessage, TgUpdate, TgUser, TgInlineQuery } from './types';
-import { answerTelegramCallback, answerTelegramInlineQuery, sendTelegramMessage, editTelegramMessage } from './telegram';
+import type { TgMessage, TgUpdate, TgUser, TgInlineQuery, TgCallbackQuery } from './types';
+import { answerTelegramCallback, answerTelegramInlineQuery, sendTelegramMessage, editTelegramMessage, editTelegramInlineMessage } from './telegram';
 import { createChatDuelChallenge, createInlineDuelForAcceptor, getOwnedCarsForTelegramUser, handleDuelCallback, safeHtml } from '@/features/duels/server';
 import { isAdminTelegramId } from '@/features/admin/auth';
 import { enforceRateLimit } from '@/lib/security/rate-limit';
@@ -39,6 +39,21 @@ async function isDuelTrigger(text: string) {
 
 
 
+function cleanInlineUsername(value: string | undefined) {
+  return String(value || '').replace(/^@/, '').replace(/[^A-Za-z0-9_]/g, '').slice(0, 32);
+}
+
+function parseInlineTarget(raw: string) {
+  const match = String(raw || '').trim().match(/(?:^|\s)@([A-Za-z0-9_]{5,32})(?:\s|$)/);
+  return match ? cleanInlineUsername(match[1]) : '';
+}
+
+async function editInlineCallbackMessage(callback: TgCallbackQuery, text: string, keyboard?: Array<Array<{ text: string; callback_data?: string; url?: string }>>) {
+  if (callback.inline_message_id) return editTelegramInlineMessage(callback.inline_message_id, text, keyboard);
+  if (callback.message) return editTelegramMessage(callback.message.chat.id, callback.message.message_id, text, keyboard);
+  return null;
+}
+
 async function handleInlineQuery(query: TgInlineQuery) {
   const s = createServerSupabase();
   const playerId = playerIdFromInline(query.from.id);
@@ -46,39 +61,69 @@ async function handleInlineQuery(query: TgInlineQuery) {
   if (error) throw error;
   const env = getServerEnv();
   const appUrl = `https://t.me/${env.TELEGRAM_BOT_USERNAME}/${env.TELEGRAM_APP_SHORT_NAME}`;
+  const targetUsername = parseInlineTarget(query.query);
+
   if (!profile || profile.banned_at) {
-    await answerTelegramInlineQuery(query.id, [{ type:'article', id:'no-profile', title:'Открыть AutoSyndicate', description:'Зайдите в Mini App и выберите машину.', input_message_content:{message_text:'🏎️ Открой AutoSyndicate и выбери машину для дуэли.'}, reply_markup:{inline_keyboard:[[{text:'🚗 Открыть Mini App',url:appUrl}]]} }], {cacheTime:0,isPersonal:true});
+    await answerTelegramInlineQuery(query.id, [{ type:'article', id:'no-profile', title:'Сначала открой AutoSyndicate', description:'Нужен профиль и машина для отправки вызова.', input_message_content:{message_text:'🏎️ Сначала открой AutoSyndicate и выбери машину для дуэли.'}, reply_markup:{inline_keyboard:[[{text:'🚗 Открыть Mini App',url:appUrl}]]} }], {cacheTime:0,isPersonal:true});
     return;
   }
+
   const owned = Array.isArray(profile.owned_cars) ? profile.owned_cars : [];
   if (!owned.length) {
-    await answerTelegramInlineQuery(query.id, [{ type:'article', id:'no-car', title:'Нет машины в гараже', description:'Заберите первый автомобиль в Mini App.', input_message_content:{message_text:'🚗 У меня пока нет машины. Захожу в AutoSyndicate за первым авто.'}, reply_markup:{inline_keyboard:[[{text:'🚗 Забрать тачку и приехать',url:appUrl}]]} }], {cacheTime:0,isPersonal:true});
+    await answerTelegramInlineQuery(query.id, [{ type:'article', id:'no-car', title:'Нет машины в гараже', description:'Купи первую машину перед созданием вызова.', input_message_content:{message_text:'🚗 Сначала нужна машина в AutoSyndicate.'}, reply_markup:{inline_keyboard:[[{text:'🚗 Открыть гараж',url:appUrl}]]} }], {cacheTime:0,isPersonal:true});
     return;
   }
+
+  if (!targetUsername) {
+    await answerTelegramInlineQuery(query.id, [{
+      type:'article', id:'inline-help', title:'Укажи соперника: @username',
+      description:`Формат: @${env.TELEGRAM_BOT_USERNAME} @username_соперника`,
+      input_message_content:{message_text:`🏁 Чтобы вызвать игрока, напиши в чате: @${env.TELEGRAM_BOT_USERNAME} @username_соперника`},
+      reply_markup:{inline_keyboard:[[{text:'Выбрать соперника',switch_inline_query_current_chat:'@'}]]}
+    }], {cacheTime:0,isPersonal:true});
+    return;
+  }
+
+  const myUsername = cleanInlineUsername(profile.telegram_username || query.from.username).toLowerCase();
+  if (myUsername && myUsername === targetUsername.toLowerCase()) {
+    await answerTelegramInlineQuery(query.id, [{ type:'article', id:'self-target', title:'Нельзя вызвать самого себя', description:'Укажи username другого игрока.', input_message_content:{message_text:'🏁 Для дуэли нужен другой соперник.'} }], {cacheTime:0,isPersonal:true});
+    return;
+  }
+
+  const { data: targetProfile, error: targetError } = await s.from('player_profiles').select('id,name,telegram_username,owned_cars,banned_at').ilike('telegram_username', targetUsername).maybeSingle();
+  if (targetError) throw targetError;
+  if (targetProfile?.banned_at) {
+    await answerTelegramInlineQuery(query.id, [{ type:'article', id:'target-banned', title:'Соперник недоступен', description:`@${targetUsername} сейчас не может принимать дуэли.`, input_message_content:{message_text:`🏁 @${targetUsername} сейчас недоступен для дуэли.`} }], {cacheTime:0,isPersonal:true});
+    return;
+  }
+
   const { data: cars, error: carsError } = await s.from('game_cars_v11').select('id,name,image_path,power,tier,category,flavor').in('id', owned).eq('active', true).order('power', { ascending: false });
   if (carsError) throw carsError;
-  if (!cars || !cars.length) {
-    await answerTelegramInlineQuery(query.id, [{ type:'article', id:'no-car', title:'Нет машины в гараже', description:'Заберите первый автомобиль в Mini App.', input_message_content:{message_text:'🚗 У меня пока нет машины. Захожу в AutoSyndicate за первым авто.'}, reply_markup:{inline_keyboard:[[{text:'🚗 Забрать тачку и приехать',url:appUrl}]]} }], {cacheTime:0,isPersonal:true});
+  if (!cars?.length) {
+    await answerTelegramInlineQuery(query.id, [{ type:'article', id:'no-active-car', title:'Машины недоступны', description:'Проверь гараж в Mini App.', input_message_content:{message_text:'🚗 Машины в гараже сейчас недоступны.'}, reply_markup:{inline_keyboard:[[{text:'Открыть AutoSyndicate',url:appUrl}]]} }], {cacheTime:0,isPersonal:true});
     return;
   }
-  const username = profile.telegram_username ? `@${profile.telegram_username}` : profile.name || query.from.first_name;
-  const plate = profile.active_plate?.text ? `\n🔖 Номер: ${safeHtml(String(profile.active_plate.text))}` : '';
+
+  const challenger = profile.telegram_username ? `@${profile.telegram_username}` : profile.name || query.from.first_name;
+  const plate = profile.active_plate?.text ? `\n🔖 ${safeHtml(String(profile.active_plate.text))}` : '';
   const activeCarId = Number(profile.active_car_id) || Number(owned[0]);
+  const targetHasCar = Boolean(targetProfile && Array.isArray(targetProfile.owned_cars) && targetProfile.owned_cars.length);
+  const targetState = targetProfile ? (targetHasCar ? 'готов выбрать машину' : 'пока без авто') : 'ещё не заходил в игру';
+
+  // Telegram's inline-results list is the car selector: one result per owned car.
   const results = cars.slice(0, 20).map((car: any) => {
-    const tierLine = car.tier ? `\n🏷️ Класс: ${safeHtml(String(car.tier))}` : '';
-    const categoryLine = car.category ? `\n📂 Категория: ${safeHtml(String(car.category))}` : '';
-    const flavorLine = car.flavor ? `\n\n<i>${safeHtml(String(car.flavor))}</i>` : '';
-    const caption = `<b>🏎️ ВЫЗОВ НА 402m</b>\n\n<b>${safeHtml(username)}</b>\n<b>${safeHtml(car.name)}</b>\n⚙️ Мощность: ${Number(car.power)} л.с.${tierLine}${categoryLine}${plate}${flavorLine}\n\n⚡ Кто быстрее — тот и хозяин улиц.\nВыбирай соперника и принимай вызов.`;
+    const caption = `<b>🏁 AUTOSYNDICATE · ДУЭЛЬ</b>\n\n<b>${safeHtml(challenger)}</b> вызывает <b>@${safeHtml(targetUsername)}</b>\n\n🚗 <b>${safeHtml(car.name)}</b>\n⚙️ ${Number(car.power)} л.с.${car.tier ? ` · ${safeHtml(String(car.tier))}` : ''}${plate}\n\nСоперник: ${safeHtml(targetState)}.\nНажать «Принять дуэль» может только @${safeHtml(targetUsername)}.`;
     return {
-      type:'article', id:`duel_${query.from.id}_${car.id}`,
-      title: `⚡ ${car.name}${car.id === activeCarId ? ' (активная)' : ''}`,
-      description: `${Number(car.power)} л.с.${car.tier ? ` • ${car.tier}` : ''}`,
-      input_message_content:{ message_text:caption, parse_mode:'HTML' },
-      reply_markup:{inline_keyboard:[[{text:'⚡ Принять вызов',callback_data:`duel_inline_accept:${query.from.id}:${car.id}`}]]}
+      type:'article', id:`duel_${query.from.id}_${car.id}_${targetUsername}`,
+      title:`${car.id === activeCarId ? '✓ ' : ''}${car.name}`,
+      description:`${Number(car.power)} л.с. • вызов @${targetUsername}`,
+      input_message_content:{message_text:caption,parse_mode:'HTML'},
+      reply_markup:{inline_keyboard:[[{text:'🏁 Принять дуэль',callback_data:`di:a:${query.from.id}:${car.id}:${targetUsername}`}]]}
     };
   });
   await answerTelegramInlineQuery(query.id, results, {cacheTime:0,isPersonal:true});
 }
+
 function playerIdFromInline(id:number){ return `tg_${id}`; }
 
 function fallbackMarkUpdate(updateId: number) {
@@ -168,10 +213,12 @@ export async function handleTelegramUpdate(update: TgUpdate) {
   }
 
   if (update.callback_query?.data) {
-    const inlineMatch = update.callback_query.data.match(/^duel_inline_accept:(\d+):(\d+)$/);
+    const inlineMatch = update.callback_query.data.match(/^di:a:(\d+):(\d+):([A-Za-z0-9_]{5,32})$/);
     if (inlineMatch) {
       const creatorTelegramId = Number(inlineMatch[1]);
       const creatorCarId = Number(inlineMatch[2]);
+      const targetUsername = inlineMatch[3];
+      const actorUsername = cleanInlineUsername(update.callback_query.from.username);
       const env = getServerEnv();
       const appUrl = `https://t.me/${env.TELEGRAM_BOT_USERNAME}/${env.TELEGRAM_APP_SHORT_NAME}`;
       try {
@@ -179,20 +226,34 @@ export async function handleTelegramUpdate(update: TgUpdate) {
           await answerTelegramCallback(update.callback_query.id, 'Нельзя принять собственный вызов.', true);
           return { inline_duel_self: true };
         }
+        if (!actorUsername || actorUsername.toLowerCase() !== targetUsername.toLowerCase()) {
+          await answerTelegramCallback(update.callback_query.id, `Этот вызов адресован @${targetUsername}.`, true);
+          return { inline_duel_wrong_target: true };
+        }
+
         const cars = await getOwnedCarsForTelegramUser(update.callback_query.from.id);
         if (!cars.length) {
-          await answerTelegramCallback(update.callback_query.id, 'У тебя нет машины в гараже.', true);
-          if (update.callback_query.message) {
-            const who = update.callback_query.from.username ? `@${update.callback_query.from.username}` : update.callback_query.from.first_name;
-            await editTelegramMessage(update.callback_query.message.chat.id, update.callback_query.message.message_id, `<b>⚠️ ${safeHtml(who)} принял вызов, но трухнул!</b>\nНу или у него просто нет тачки в гараже... 🤷‍♂️\n\n🏎️ Заходи в Mini App, забирай свой первый авто и покажи, кто тут настоящий хозяин улиц! 👇`, [[{text:'🚗 Забрать тачку и приехать',url:appUrl}]]);
-          }
+          await answerTelegramCallback(update.callback_query.id, 'Сначала нужна машина в гараже.', true);
+          await editInlineCallbackMessage(
+            update.callback_query,
+            `<b>@${safeHtml(targetUsername)}, у вас нет авто!</b>\n\nПерейдите в бота, чтобы купить первую машину и принять вызов.`,
+            [[{text:'🚗 Открыть AutoSyndicate',url:appUrl}]]
+          );
           return { inline_duel_no_car: true };
         }
-        await answerTelegramCallback(update.callback_query.id, 'Выбери свою машину.');
-        if (update.callback_query.message) {
-          const who = update.callback_query.from.username ? `@${update.callback_query.from.username}` : update.callback_query.from.first_name;
-          const rows = cars.slice(0, 20).map((car: any) => [{ text: `${car.name} • ${Number(car.power)} л.с.`, callback_data: `duel_inline_pick:${creatorTelegramId}:${creatorCarId}:${car.id}` }]);
-          await editTelegramMessage(update.callback_query.message.chat.id, update.callback_query.message.message_id, `<b>🚗 ${safeHtml(who)}, выбери машину для дуэли:</b>`, rows);
+
+        await answerTelegramCallback(update.callback_query.id, 'Выбери машину для дуэли.');
+        {
+          const rows = cars.slice(0, 16).map((car: any) => [{
+            text: `${car.name} • ${Number(car.power)} л.с.`,
+            callback_data: `di:p:${creatorTelegramId}:${creatorCarId}:${update.callback_query!.from.id}:${car.id}`
+          }]);
+          rows.push([{ text:'Отмена', callback_data:`di:x:${update.callback_query.from.id}` }]);
+          await editInlineCallbackMessage(
+            update.callback_query,
+            `<b>🚗 @${safeHtml(targetUsername)}, выбери машину</b>\n\nПосле выбора будет создана приватная Race Room для двух игроков.`,
+            rows
+          );
         }
       } catch (error) {
         console.error('inline duel accept failed', error);
@@ -201,21 +262,41 @@ export async function handleTelegramUpdate(update: TgUpdate) {
       return { inline_duel_carpick: true };
     }
 
-    const pickMatch = update.callback_query.data.match(/^duel_inline_pick:(\d+):(\d+):(\d+)$/);
+    const cancelMatch = update.callback_query.data.match(/^di:x:(\d+)$/);
+    if (cancelMatch) {
+      if (Number(cancelMatch[1]) !== update.callback_query.from.id) {
+        await answerTelegramCallback(update.callback_query.id, 'Эта кнопка не для вас.', true);
+        return { inline_duel_cancel_wrong_user: true };
+      }
+      await answerTelegramCallback(update.callback_query.id, 'Выбор отменён.');
+      await editInlineCallbackMessage(update.callback_query, '<b>Дуэль отменена соперником.</b>');
+      return { inline_duel_cancelled: true };
+    }
+
+    const pickMatch = update.callback_query.data.match(/^di:p:(\d+):(\d+):(\d+):(\d+)$/);
     if (pickMatch) {
       const creatorTelegramId = Number(pickMatch[1]);
       const creatorCarId = Number(pickMatch[2]);
-      const chosenCarId = Number(pickMatch[3]);
+      const expectedOpponentId = Number(pickMatch[3]);
+      const chosenCarId = Number(pickMatch[4]);
       try {
-        const created = await createInlineDuelForAcceptor(update.callback_query.from, creatorTelegramId, creatorCarId, chosenCarId, update.callback_query.message?.chat.id, update.callback_query.message?.message_id);
+        if (expectedOpponentId !== update.callback_query.from.id) {
+          await answerTelegramCallback(update.callback_query.id, 'Эта машина выбирается другим игроком.', true);
+          return { inline_duel_pick_wrong_user: true };
+        }
+        const created = await createInlineDuelForAcceptor(update.callback_query.from, creatorTelegramId, creatorCarId, chosenCarId, update.callback_query.message?.chat.id, update.callback_query.message?.message_id, update.callback_query.from.username);
         const env = getServerEnv();
-        const url = `https://t.me/${env.TELEGRAM_BOT_USERNAME}/${env.TELEGRAM_APP_SHORT_NAME}?startapp=${created.room.public_code}`;
-        await answerTelegramCallback(update.callback_query.id, 'Дуэль подтверждена!');
-        if (update.callback_query.message) await editTelegramMessage(update.callback_query.message.chat.id, update.callback_query.message.message_id, `<b>🚨 ГОНКА НАЧИНАЕТСЯ! ДУЭЛЬ ПОДТВЕРЖДЕНА! 🚨</b>\n\n🏎️ ${safeHtml(created.room.player_a_name)} (${safeHtml(created.creatorCar.name)} • ${Number(created.creatorCar.power)} л.с.)\n⚡ VS\n🏎️ ${safeHtml(created.room.player_b_name)} (${safeHtml(created.opponentCar.name)} • ${Number(created.opponentCar.power)} л.с.)\n\n🏆 Ставка принята! Отрезок 402m ждёт. Кто окажется на финише, а кто будет глотать пыль? 🔥\n\n👇 Жми кнопку ниже, чтобы войти в комнату дуэли`, [[{text:'🏁 ВЪЕХАТЬ НА ТРАССУ',url}]]);
+        const url = `https://t.me/${env.TELEGRAM_BOT_USERNAME}/${env.TELEGRAM_APP_SHORT_NAME}?startapp=duel_${created.room.public_code}`;
+        await answerTelegramCallback(update.callback_query.id, 'Race Room создана!');
+        await editInlineCallbackMessage(
+          update.callback_query,
+          `<b>🏁 AUTOSYNDICATE · RACE ROOM</b>\n\n🚗 <b>${safeHtml(created.room.player_a_name)}</b>\n${safeHtml(created.creatorCar.name)} · ${Number(created.creatorCar.power)} л.с.\n\n<b>VS</b>\n\n🚗 <b>${safeHtml(created.room.player_b_name)}</b>\n${safeHtml(created.opponentCar.name)} · ${Number(created.opponentCar.power)} л.с.\n\nОба игрока открывают одну комнату, подтверждают готовность и видят прогресс соперника прямо во время заезда.`,
+          [[{text:'🏁 ОТКРЫТЬ RACE ROOM',url}]]
+        );
       } catch (error) {
         const raw = error instanceof Error ? error.message : '';
         console.error('inline duel pick failed', error);
-        await answerTelegramCallback(update.callback_query.id, raw === 'opponent car unavailable' ? 'Эта машина недоступна.' : 'Не удалось создать дуэль.', true);
+        await answerTelegramCallback(update.callback_query.id, raw === 'opponent car unavailable' ? 'Эта машина недоступна.' : 'Не удалось создать Race Room.', true);
       }
       return { inline_duel_pick: true };
     }
