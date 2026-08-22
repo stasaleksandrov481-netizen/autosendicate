@@ -4037,41 +4037,42 @@ if (typeof window !== 'undefined') {
     return baseSimulate(dt);
   };
 
-  // Multi-lane race visualization + BUSTED overlay.
+  // Cinematic night-drag race visualization (controls unchanged).
   const baseShowCockpit=showRaceCockpit;
   showRaceCockpit=function(){
     baseShowCockpit();
     const c=raceCtx;if(!c)return;
-    // Recover chaos/chase flags from opponent if lost during prepareRace chain
     if(!c.chaosBots && c.opp?.chaosBots) c.chaosBots=c.opp.chaosBots;
-    if(!c.chaos && (c.opp?.chaos || c.mode==='chaos')) {c.chaos=true;c.mode='chaos';c.lanes=c.lanes||4;}
-    if(!c.chase && (c.opp?.chase || c.opp?.isPolice || c.mode==='chase')) {c.chase=true;c.mode='chase';c.isPolice=true;c.lanes=c.lanes||2;}
-    if(c.chaos && !c.lanes) c.lanes=4;
-    if(c.chase && !c.lanes) c.lanes=2;
+    if(!c.chaos && (c.opp?.chaos || c.mode==='chaos')) {c.chaos=true;c.mode='chaos';}
+    if(!c.chase && (c.opp?.chase || c.opp?.isPolice || c.mode==='chase')) {c.chase=true;c.mode='chase';c.isPolice=true;}
 
     const map=document.querySelector('.race-map')||document.querySelector('#race-content .race-map');if(!map)return;
-    const rows=[{name:state.playerName||'YOU',type:'player'}];
-    if(c.chase || c.isPolice){
-      rows.push({name:c.opp?.name||'🚔 ДПС',type:'cop'});
-    } else if(c.chaosBots && c.chaosBots.length){
-      c.chaosBots.forEach((b:any)=>rows.push({name:b.name||'BOT',type:'ai'}));
-    } else {
-      rows.push({name:c.opp?.name||'BOT',type:'ai'});
-    }
-    const lanes=Math.max(rows.length, c.lanes||rows.length);
-    c.lanes=lanes;
-    const html=rows.map((r:any,i:number)=>'<div class="dynamic-lane '+r.type+'" data-lane="'+i+'"><div class="lane-name">'+escapeHtml(r.name)+'</div><div class="lane-track"><i class="lane-fill"></i><b class="lane-car">'+(r.type==='cop'?'🚔':(r.type==='player'?'🚗':'🏎️'))+'</b></div></div>').join('');
-    map.innerHTML='<div class="dynamic-track lanes-'+lanes+(c.chase?' chase-mode':'')+(c.chaos?' chaos-mode':'')+'">'+html+'</div>';
-    c.dynamicLaneRows=rows;
+    map.classList.add('race-cinematic');
+    const rivals=[];
+    if(c.chase || c.isPolice) rivals.push({name:c.opp?.name||'ДПС',type:'cop'});
+    else if(c.chaosBots && c.chaosBots.length) c.chaosBots.forEach((b:any,i:number)=>rivals.push({name:b.name||('BOT '+(i+1)),type:'ai',idx:i}));
+    else rivals.push({name:c.opp?.name||'RIVAL',type:'ai',idx:0});
 
-    // Make classic rival car icon look like police in chase mode
+    const rivalHtml=rivals.map((r:any,i:number)=>'<div class="cine-car '+r.type+'" data-rival="'+i+'"><div class="cine-car-body"></div><div class="cine-car-label">'+escapeHtml(r.name)+'</div></div>').join('');
+    map.innerHTML=
+      '<div class="cine-sky"><i class="cine-star"></i><i class="cine-star s2"></i><i class="cine-star s3"></i><div class="cine-moon"></div></div>'+
+      '<div class="cine-city"></div>'+
+      '<div class="cine-road">'+
+        '<div class="cine-horizon"></div>'+
+        '<div class="cine-asphalt">'+
+          '<div class="cine-lanes"></div>'+
+          '<div class="cine-dash" id="cine-dash"></div>'+
+          '<div class="cine-car player" id="cine-player"><div class="cine-car-body"></div><div class="cine-car-label">ВЫ</div></div>'+
+          rivalHtml+
+        '</div>'+
+        '<div class="cine-finish-line" id="cine-finish"><span>FINISH</span></div>'+
+      '</div>'+
+      '<div class="cine-hud-bar"><span id="cine-progress-label">0%</span><div class="cine-progress"><i id="cine-progress-fill"></i></div><span id="cine-gap-label">СТАРТ</span></div>';
+    c.dynamicLaneRows=rivals;
+
     if(c.chase || c.isPolice){
-      const ai=document.getElementById('map-ai');
-      if(ai) ai.innerHTML='<i class="race-car-shape rival has-image police-car" style="background:#1e3a5f;border:2px solid #ef4444;box-shadow:0 0 12px rgba(239,68,68,.55)"><b style="color:#fff;font-size:10px">ДПС</b></i>';
       const badge=document.querySelector('#race-content .race-event-badge');
       if(badge) badge.innerHTML='<span style="color:#ef4444">СПЕЦ-ПОГОНЯ · ДПС</span><b>УЙДИ ОТ ПАТРУЛЯ</b>';
-      const gapLeft=document.getElementById('gap-side-left');
-      if(gapLeft) gapLeft.textContent='ДПС';
     }
   };
   const baseUpdateHUD=updateRaceHUD;
@@ -4080,36 +4081,49 @@ if (typeof window !== 'undefined') {
     const c=raceCtx;if(!c)return;
     if(!c.chaosBots && c.opp?.chaosBots) c.chaosBots=c.opp.chaosBots;
     if(!c.chase && (c.opp?.chase || c.opp?.isPolice || c.mode==='chase')) {c.chase=true;c.isPolice=true;}
-    const track=document.querySelector('.dynamic-track');if(!track)return;
-    const rows=[{distance:c.distance,name:state.playerName||'YOU',type:'player'}];
-    if(c.chase || c.isPolice){
-      rows.push({distance:c.aiDistance||0,name:c.opp?.name||'🚔 ДПС',type:'cop'});
-    } else if(c.chaosBots && c.chaosBots.length){
+    const map=document.querySelector('.race-map.race-cinematic');if(!map)return;
+    const len=Math.max(1,c.trackLength||1);
+    const pPct=Math.max(0,Math.min(100,(c.distance||0)/len*100));
+    const player=document.getElementById('cine-player') as HTMLElement|null;
+    if(player) player.style.left=Math.max(4,Math.min(88,pPct*0.86+4))+'%';
+
+    const rivals:any[]=[];
+    if(c.chase || c.isPolice) rivals.push({distance:c.aiDistance||0,type:'cop'});
+    else if(c.chaosBots && c.chaosBots.length){
       const n=c.chaosBots.length;
-      c.chaosBots.forEach((b:any,i:number)=>{
-        // spread bots around primary AI distance so all 3 move independently on the map
-        const factor=0.78 + (i/(Math.max(1,n-1)||1))*0.22;
-        const jitter=((i+1)*17)%11;
-        rows.push({distance:Math.max(0, Math.min(c.trackLength, (c.aiDistance||0)*factor + jitter)), name:b.name||('BOT '+(i+1)), type:'ai'});
+      c.chaosBots.forEach((_:any,i:number)=>{
+        const factor=0.78+(i/Math.max(1,n-1))*0.22;
+        rivals.push({distance:Math.max(0,Math.min(len,(c.aiDistance||0)*factor)),type:'ai'});
       });
-    } else {
-      rows.push({distance:c.aiDistance||0,name:c.opp?.name||'BOT',type:'ai'});
-    }
-    const laneEls=Array.from(track.querySelectorAll('.dynamic-lane')) as HTMLElement[];
-    laneEls.forEach((lane:any,i:number)=>{
-      const r=rows[i];if(!r)return;const fill=lane.querySelector('.lane-fill') as HTMLElement,car=lane.querySelector('.lane-car') as HTMLElement;
-      if(fill)fill.style.width=Math.max(0,Math.min(100,r.distance/c.trackLength*100))+'%';
-      if(car)car.style.left=Math.max(3,Math.min(97,r.distance/c.trackLength*100))+'%';
-      const name=lane.querySelector('.lane-name') as HTMLElement;if(name)name.textContent=r.name;
+    } else rivals.push({distance:c.aiDistance||0,type:'ai'});
+
+    map.querySelectorAll('.cine-car[data-rival]').forEach((el:any,i:number)=>{
+      const r=rivals[i];if(!r)return;
+      const pct=Math.max(0,Math.min(100,r.distance/len*100));
+      el.style.left=Math.max(4,Math.min(88,pct*0.86+4))+'%';
+      el.style.bottom=(18+i*14)+'px';
     });
+
+    const fill=document.getElementById('cine-progress-fill') as HTMLElement|null;
+    if(fill) fill.style.width=pPct+'%';
+    const pl=document.getElementById('cine-progress-label');
+    if(pl) pl.textContent=Math.round(pPct)+'%';
+    const gap=document.getElementById('cine-gap-label');
+    if(gap){
+      const lead=(c.distance||0)-(c.aiDistance||0);
+      gap.textContent=Math.abs(lead)<4?'РОВНО':(lead>0?('+'+Math.round(lead)+' м'):(Math.round(lead)+' м'));
+      gap.style.color=lead>8?'#4ade80':lead<-8?'#f87171':'#eab308';
+    }
+    const dash=document.getElementById('cine-dash') as HTMLElement|null;
+    if(dash){
+      const speed=Math.max(0,Number(c.speed)||0);
+      dash.style.animationDuration=Math.max(0.12, 1.1 - Math.min(0.95, speed/340))+'s';
+      map.style.setProperty('--cine-speed', String(Math.min(1, speed/280)));
+    }
     if(c.chase || c.isPolice){
-      // In chase, police catching up means player is behind AI
       if((c.aiDistance||0)>=c.distance && c.distance>30 && !c.finished){
-        const playerLane=track.querySelector('.dynamic-lane.player') as HTMLElement;
-        if(playerLane&&!playerLane.classList.contains('busted')){
-          playerLane.classList.add('busted');
-          showAction('BUSTED · ДПС ДОГНАЛ');
-        }
+        map.classList.add('busted');
+        if(!c._bustedToast){c._bustedToast=true;showAction('BUSTED · ДПС ДОГНАЛ');}
       }
     }
   };
@@ -4118,13 +4132,11 @@ if (typeof window !== 'undefined') {
   const baseFinish=finishRace;
   finishRace=function(playerWins,c){
     const ctx=c||raceCtx;
-    // recover chase flag if it was lost
     if(ctx && !ctx.chase && (ctx.opp?.chase || ctx.opp?.isPolice || ctx.mode==='chase' || ctx.isPolice)){
-      ctx.chase=true;ctx.isPolice=true;
+      ctx.chase=true; ctx.isPolice=true;
     }
     if(ctx?.chase){
-      // Caught before finish line → loss, no chips
-      if(!playerWins || ((ctx.aiDistance||0)>=ctx.distance && ctx.distance<ctx.trackLength)){
+      if(!playerWins || ((ctx.aiDistance||0)>=ctx.distance && ctx.distance<(ctx.trackLength||0))){
         baseFinish(false,ctx);
         showToast('ДПС ДОГНАЛ · ЧИПЫ НЕ НАЧИСЛЕНЫ');
         return;
@@ -4135,7 +4147,6 @@ if (typeof window !== 'undefined') {
         state.heat=Math.max(0,(Number(state.heat)||0)-2);
         try{updateHeaderFeature();}catch(_){}
         showToast('ПОБЕГ УДАЛСЯ · +'+reward+' ЧИПОВ · Heat −2');
-        // Patch result screen shortly after base finish renders
         setTimeout(()=>{
           const rewardEl=document.querySelector('#race-content .result-reward');
           if(rewardEl) rewardEl.innerHTML='+'+reward+' ◈ CHIPS · Heat −2';
@@ -4160,10 +4171,10 @@ if (typeof window !== 'undefined') {
     saveState();openTune(carId);updateHeaderFeature();
   };
 
-  // Random country plate generator with weighted "premium" combinations.
+  // Plate generator: country + typed region, from car card only.
   function generateRealPlate(country='RU',region?:string){
     const c=COUNTRIES[country as keyof typeof COUNTRIES]||COUNTRIES.RU;
-    const reg=region||rand(c.regions);
+    const reg=String(region||'').trim().toUpperCase().slice(0,6) || rand(c.regions);
     const premium=Math.random()<.12;
     let num='',letters='';
     if(premium){
@@ -4176,24 +4187,58 @@ if (typeof window !== 'undefined') {
     const rarity=premium?(num==='777'||num==='001'?'legendary':'epic'):'common';
     return {country,region:reg,number:letters[0]+num+letters.slice(1),rarity};
   }
-  function choosePlate(country='RU',region?:string){
+  function closeMoneyModal(){
+    const root=document.getElementById('money-modal-root');
+    if(root) root.innerHTML='';
+  }
+  function choosePlate(country='RU',region?:string,carId?:number){
     const plate=generateRealPlate(country,region);
     state.plates.push(plate);state.plates=state.plates.slice(-100);state.activePlate=state.plates.length-1;
-    saveState();renderGarage();showToast('Новый госномер · '+plate.number);
+    const uid='plate_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,7);
+    const invPlate={uid,text:plate.number,rarity:plate.rarity,series:plate.region,value:plate.rarity==='legendary'?12000:plate.rarity==='epic'?3500:120,limited:false,createdAt:Date.now(),country:plate.country,region:plate.region};
+    if(!Array.isArray(state.plateInventory)) state.plateInventory=[];
+    state.plateInventory.push(invPlate);
+    const target=Number(carId||state.detailTargetId||state.activeCarId);
+    if(Number.isFinite(target) && target>0){
+      if(!state.installedPlates) state.installedPlates={};
+      state.installedPlates[String(target)]=uid;
+    }
+    saveState();
+    try{renderGarage();}catch(_){}
+    try{if(state.detailTargetId) openDetail(state.detailTargetId);}catch(_){}
+    showToast('Новый госномер · '+plate.number);
+    closeMoneyModal();
   }
-  function openPlatePicker(){
+  function openPlatePicker(carId?:number){
     const root=document.getElementById('money-modal-root');if(!root)return;
+    const cid=Number(carId||state.detailTargetId||state.activeCarId)||0;
+    (window as any).__plateTargetCar=cid;
     const countries=Object.entries(COUNTRIES);
-    root.innerHTML='<div class="modal-overlay"><div class="plate-picker-modal"><div class="section-title"><span>ГОСУДАРСТВЕННЫЙ НОМЕР</span></div><p class="empty-note">Выберите страну и регион. Редкие комбинации выпадают случайно.</p><div class="plate-country-grid">'+countries.map(([code,c]:any)=>'<button class="plate-country" onclick="pickPlateCountry(\''+code+'\')"><b>'+c.flag+'</b><span>'+c.name+'</span></button>').join('')+'</div><div id="plate-region-pick"></div><button class="btn btn-ghost" onclick="closeMoneyModal()">ОТМЕНА</button></div></div>';
+    root.innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closeMoneyModal()"><div class="plate-picker-modal" onclick="event.stopPropagation()"><div class="section-title"><span>ГОСУДАРСТВЕННЫЙ НОМЕР</span></div><p class="empty-note">Выберите страну и введите код региона сами (например 77, 99, AA).</p><div class="plate-country-grid">'+countries.map(([code,c]:any)=>'<button type="button" class="plate-country" data-code="'+code+'" onclick="pickPlateCountry(\''+code+'\')"><b>'+c.flag+'</b><span>'+c.name+'</span></button>').join('')+'</div><div id="plate-region-pick"></div><input type="hidden" id="plate-country-code" value="RU"><button class="btn btn-ghost" type="button" onclick="closeMoneyModal()">ОТМЕНА</button></div></div>';
   }
   function pickPlateCountry(code:string){
     const c=COUNTRIES[code as keyof typeof COUNTRIES];if(!c)return;
+    const hidden=document.getElementById('plate-country-code') as HTMLInputElement|null;
+    if(hidden) hidden.value=code;
+    document.querySelectorAll('.plate-country').forEach((btn:any)=>btn.classList.toggle('active', btn.getAttribute('data-code')===code));
     const root=document.getElementById('plate-region-pick');if(!root)return;
-    root.innerHTML='<div class="plate-region-grid">'+c.regions.map(r=>'<button onclick="choosePlate(\''+code+'\',\''+r+'\');closeMoneyModal()">'+r+'</button>').join('')+'</div>';
+    root.innerHTML='<label class="plate-region-label">Код региона</label>'+
+      '<input id="plate-region-input" class="plate-region-input" maxlength="6" placeholder="Например: 77 / AA / 01" autocomplete="off" inputmode="text">'+
+      '<button class="btn btn-select" type="button" onclick="submitPlateRegion()">ВЫДАТЬ НОМЕР</button>';
+    setTimeout(()=>{const inp=document.getElementById('plate-region-input') as HTMLInputElement|null;if(inp){inp.focus();inp.addEventListener('keydown',(e:any)=>{if(e.key==='Enter')submitPlateRegion();});}},30);
+  }
+  function submitPlateRegion(){
+    const code=(document.getElementById('plate-country-code') as HTMLInputElement|null)?.value||'RU';
+    const region=(document.getElementById('plate-region-input') as HTMLInputElement|null)?.value||'';
+    if(!String(region).trim()){showToast('Введите код региона');return;}
+    const cid=Number((window as any).__plateTargetCar||state.detailTargetId||state.activeCarId)||0;
+    choosePlate(code, String(region).trim(), cid);
   }
   (window as any).choosePlate=choosePlate;
   (window as any).openPlatePicker=openPlatePicker;
   (window as any).pickPlateCountry=pickPlateCountry;
+  (window as any).submitPlateRegion=submitPlateRegion;
+  (window as any).closeMoneyModal=closeMoneyModal;
   (window as any).generateRealPlate=generateRealPlate;
 
   // Market detail modal helper.
@@ -4234,16 +4279,38 @@ if (typeof window !== 'undefined') {
     const c=COUNTRIES[p.country as keyof typeof COUNTRIES]||COUNTRIES.RU;
     return '<div class="plate-visual"><span class="plate-main">'+escapeHtml(String(p.number||'A000AA'))+'</span><span class="plate-region">'+escapeHtml(String(p.region||''))+'</span><span class="plate-flag">'+c.flag+'</span></div>';
   }
+  function plateVisualForCar(carId:any){
+    try{const p=typeof activePlate==='function'?activePlate(Number(carId)):null;if(p?.text)return '<div class="plate-visual"><span class="plate-main">'+escapeHtml(p.text)+'</span></div>';}catch(_){}
+    return '<div class="plate-visual empty">БЕЗ НОМЕРА</div>';
+  }
   function renderCarousel(targetId,cars,owned=false){
     const root=document.getElementById(targetId);if(!root)return;
-    root.classList.add('car-carousel');
-    root.innerHTML=cars.map((car:any)=>'<article class="carousel-card" data-car-id="'+car.id+'"><div class="car-thumb" onclick="openDetail('+car.id+')">'+carArtSVG(car)+'</div><div class="car-info-box"><div class="car-title">'+escapeHtml(car.name)+'</div><div class="car-stats"><span>'+fmt(getEffectivePower(car))+' л.с.</span><span>'+escapeHtml(car.tier)+'</span></div><p class="carousel-desc">'+escapeHtml(car.flavor)+'</p>'+(owned?plateVisual():'')+'<button class="btn '+(owned?'btn-ghost':'btn-buy')+'" onclick="'+(owned?'selectCar('+car.id+')':'buyCar('+car.id+')')+'">'+(owned?'ВЫБРАТЬ':'КУПИТЬ · '+fmt(car.price)+' SYND')+'</button></div></article>').join('');
+    root.classList.add('car-carousel','garage-carousel-h');
+    root.innerHTML=cars.map((car:any)=>{
+      const isActive=state.activeCarId===car.id;
+      return '<article class="carousel-card'+(isActive?' is-active':'')+'" data-car-id="'+car.id+'">'+
+        '<div class="car-thumb" onclick="openDetail('+car.id+')">'+carArtSVG(car)+
+        '<div class="tier-badge">'+escapeHtml(String(car.tier||''))+'</div>'+
+        '<div class="power-badge">'+fmt(getEffectivePower(car))+' л.с.</div></div>'+
+        '<div class="car-info-box"><div class="car-title">'+escapeHtml(car.name)+'</div>'+
+        '<div class="car-stats"><span>'+fmt(getEffectivePower(car))+' л.с.</span><span>'+(isActive?'АКТИВНА':'В ГАРАЖЕ')+'</span></div>'+
+        '<p class="carousel-desc">'+escapeHtml(car.flavor||'')+'</p>'+(owned?plateVisualForCar(car.id):'')+
+        '<div class="btn-row carousel-actions">'+
+        (owned
+          ? ('<button class="btn btn-select'+(isActive?' selected-mark':'')+'" '+(isActive?'disabled':'')+' onclick="selectCar('+car.id+')">'+(isActive?'АКТИВНА':'ВЫБРАТЬ')+'</button>'+
+             '<button class="btn btn-ghost" onclick="openDetail('+car.id+')">КАРТОЧКА</button>'+
+             '<button class="btn btn-ghost" onclick="openPlatePicker('+car.id+')">НОМЕР</button>')
+          : ('<button class="btn btn-buy" onclick="buyCar('+car.id+')">КУПИТЬ · '+fmt(car.price)+' SYND</button>'))+
+        '</div></div></article>';
+    }).join('');
   }
   const oldGarage=renderGarage, oldShop=renderShop;
   renderGarage=function(){
     oldGarage();
     const cars=carsDB.filter((c:any)=>state.ownedCars.includes(c.id));
     renderCarousel('garage-list',cars,true);
+    const list=document.getElementById('garage-list');
+    if(list) list.classList.add('car-carousel','garage-carousel-h');
     const active=state.activeCarId, svc=document.getElementById('garage-quick-service');
     if(svc){svc.innerHTML=renderMaintenance(active);}
     updateHeaderFeature();
@@ -4251,7 +4318,29 @@ if (typeof window !== 'undefined') {
   renderShop=function(){
     oldShop();
     renderCarousel('shop-list',carsDB.slice(),false);
+    const list=document.getElementById('shop-list');
+    if(list) list.classList.add('car-carousel','garage-carousel-h');
   };
+
+  const baseOpenDetailPlate=openDetail;
+  openDetail=function(carId:any){
+    baseOpenDetailPlate(carId);
+    const id=Number(carId);
+    if(!state.ownedCars.includes(id)) return;
+    const root=document.getElementById('detail-content');
+    if(!root || root.querySelector('.plate-detail-block')) return;
+    let plateNum='';
+    try{const p=typeof activePlate==='function'?activePlate(id):null; if(p?.text) plateNum=p.text;}catch(_){}
+    const block=document.createElement('div');
+    block.className='plate-detail-block';
+    block.innerHTML='<div class="section-title" style="margin-top:12px"><span>ГОСНОМЕР</span></div>'+
+      (plateNum?'<div class="plate-visual"><span class="plate-main">'+escapeHtml(plateNum)+'</span></div>':'<div class="plate-visual empty">НОМЕР НЕ ВЫДАН</div>')+
+      '<button class="btn btn-select" type="button" onclick="openPlatePicker('+id+')">'+(plateNum?'СМЕНИТЬ НОМЕР':'ВЫДАТЬ НОМЕР')+'</button>';
+    const list=root.querySelector('.list-container');
+    if(list) list.before(block); else root.appendChild(block);
+  };
+  (window as any).openDetail=openDetail;
+
 
   // Chat badge + 99+ cap.
   function renderChatBadge(){
@@ -4264,25 +4353,16 @@ if (typeof window !== 'undefined') {
   openChat=function(){state.unreadChat=0;updateHeaderFeature();oldOpenChat();};
   setInterval(()=>{if(Math.random()<.08&&!document.getElementById('screen-chat')?.classList.contains('active')){state.unreadChat=Math.min(99999,state.unreadChat+1);updateHeaderFeature();}},12000);
 
-  // Plate selector screen injected into profile.
-  setTimeout(()=>{
-    const p=document.querySelector('#screen-profile .hub-grid');if(p&&!document.getElementById('plate-hub')){
-      const el=document.createElement('div');el.id='plate-hub';el.className='hub-card';el.onclick=()=>openPlatePicker();
-      el.innerHTML='<div class="ic">▣</div><div class="lbl">Госномер</div><div class="sub">Рандом · RU</div>';p.appendChild(el);
-    }
-  },300);
+  setTimeout(()=>{const dead=document.getElementById('plate-hub');if(dead)dead.remove();},50);
 
   // Race instance naming and hardcore HUD are applied after the existing physics layers.
   const featurePrepareRace=prepareRace;
   prepareRace=function(target:any,mode:any){
     featurePrepareRace(target,mode);
     const c=raceCtx;if(!c)return;
-    // Preserve feature-mode flags from opponent object
-    if(c.opp?.chase || c.opp?.isPolice){c.chase=true;c.isPolice=true;c.mode=c.mode||'chase';}
-    if(c.opp?.chaos || c.opp?.chaosBots){c.chaos=true;c.mode=c.mode||'chaos';c.chaosBots=c.opp.chaosBots||c.chaosBots;c.lanes=c.lanes||4;}
-    if(mode!=='pvp' && !c.chase && !c.opp?.isPolice){
+    if(mode!=='pvp' && !c.chase){
       const original=c.opp;
-      if(original && !original.chase && !original.isPolice && !original.chaos){
+      if(original){
         const boss=!!original.boss;
         c.opp={...original,name:boss?dynName(original,0,true):dynName(original),status:boss?'УНИКАЛЬНЫЙ БОСС':rand(BOT_STATUS)};
       }
@@ -4328,31 +4408,6 @@ if (typeof window !== 'undefined') {
       });
     },0);
   };
-
-  // Race brief: show CHIPS reward for special chase instead of 0 SYND
-  const baseRenderRaceBriefCarbon=renderRaceBrief;
-  renderRaceBrief=function(){
-    baseRenderRaceBriefCarbon();
-    const c=raceCtx;if(!c)return;
-    if(c.chase || c.isPolice || c.opp?.chase || c.opp?.isPolice){
-      const lines=document.querySelectorAll('#race-content .pre-race-box .pre-race-line');
-      if(lines && lines[2]){
-        const b=lines[2].querySelector('b');
-        const chips=c.chipsReward||12;
-        if(b) b.innerHTML='+'+chips+' ◈ CHIPS';
-      }
-      const drivers=document.querySelectorAll('#race-content .race3-driver b');
-      if(drivers && drivers[1] && c.opp) drivers[1].textContent=c.opp.name||'🚔 ДПС';
-      const badge=document.querySelector('#race-content .race-event-badge');
-      if(badge) badge.innerHTML='<span style="color:#ef4444">СПЕЦ-ПОГОНЯ</span><b>ДПС · УЙДИ И ЗАБЕРИ ЧИПЫ</b>';
-    }
-    if(c.chaos || (c.chaosBots && c.chaosBots.length)){
-      const badge=document.querySelector('#race-content .race-event-badge');
-      const n=(c.chaosBots&&c.chaosBots.length)||3;
-      if(badge) badge.innerHTML='<span>УЛИЧНЫЙ ХАОС</span><b>'+n+' БОТА · 4 ЛИНИИ</b>';
-    }
-  };
-  (window as any).renderRaceBrief=renderRaceBrief;
 
   (window as any).renderMaintenance=renderMaintenance;
   (window as any).updateHeaderFeature=updateHeaderFeature;
