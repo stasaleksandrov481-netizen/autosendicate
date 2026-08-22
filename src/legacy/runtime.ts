@@ -2211,7 +2211,7 @@ function appendChatMessage(m){
   div.className='chat-msg'+(isMe?' me':'');
   const nm=escapeHtml(m.user_name||'Игрок');
   const profileTarget=m.player_id||m.user_name||'Игрок';
-  div.innerHTML='<div class="chat-msg-name chat-profile-link" onclick="openPublicProfileByName('+JSON.stringify(profileTarget).replace(/"/g,'&quot;')+')">'+nm+' '+tagsRowHTML(m.profile_tags,true)+' <span style="font-size:8px;color:var(--accent);">ПРОФИЛЬ</span></div><div class="chat-msg-text">'+escapeHtml(m.message)+'</div><div class="chat-msg-time">'+time+'</div>';
+  div.innerHTML='<div class="chat-msg-name chat-profile-link" onclick="openPublicProfileByName('+JSON.stringify(profileTarget).replace(/"/g,'&quot;')+')"><span class="chat-msg-name-text">'+nm+'</span>'+tagsRowHTML(m.profile_tags,true)+'<span class="chat-msg-profile-link">ПРОФИЛЬ</span></div><div class="chat-msg-text">'+escapeHtml(m.message)+'</div><div class="chat-msg-time">'+time+'</div>';
   c.appendChild(div);
 }
 async function loadChatHistory(silent=false){
