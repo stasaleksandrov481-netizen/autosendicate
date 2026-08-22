@@ -33,6 +33,7 @@ function defaultState(){
     winStreak:0, raceHistory:[], tournamentRuns:{},
     raceStats:{perfectStarts:0,perfectShifts:0,hardLaunches:0,safeLaunches:0,radarEvents:0,policeStops:0,nitroUses:0},
     heat:0, heatUpdatedAt:Date.now(), arrestUntil:0, chips:0, chipLedger:[], districtRep:0, districtWins:{},
+    work:{taxiJobs:0,theftJobs:0,towTruckOwned:false,towTruckUntil:0,towTruckStartedAt:0,towTruckReward:0,activeType:'',activeUntil:0,activeStartedAt:0,activeReward:0,activeCarId:0,chipQuestDay:'',chipQuestProgress:0,chipQuestClaimed:false,deliveryReadyAt:0},
     contracts:{day:'',items:{}}, recentRaces:[],
     detailTargetId:null,tuneTargetId:null,
     createdAt:Date.now(), lastSaved:0
@@ -128,6 +129,15 @@ function normalizeState(raw){
     },
     heat:intNumber(s.heat,0,0,5), heatUpdatedAt:intNumber(s.heatUpdatedAt,Date.now(),0,Date.now()+86400000), arrestUntil:intNumber(s.arrestUntil,0,0,Date.now()+86400000),
     chips:intNumber(s.chips,0,0,1_000_000_000), chipLedger:Array.isArray(s.chipLedger)?s.chipLedger.slice(-100):[],
+    work:{
+      taxiJobs:intNumber(s.work?.taxiJobs,0,0,1e9),theftJobs:intNumber(s.work?.theftJobs,0,0,1e9),
+      towTruckOwned:s.work?.towTruckOwned===true,towTruckUntil:intNumber(s.work?.towTruckUntil,0,0,Date.now()+365*86400000),
+      towTruckStartedAt:intNumber(s.work?.towTruckStartedAt,0,0,Date.now()+365*86400000),towTruckReward:intNumber(s.work?.towTruckReward,0,0,1e9),
+      activeType:['taxi','theft','delivery'].includes(String(s.work?.activeType||''))?String(s.work.activeType):'',activeUntil:intNumber(s.work?.activeUntil,0,0,Date.now()+86400000),
+      activeStartedAt:intNumber(s.work?.activeStartedAt,0,0,Date.now()+86400000),activeReward:intNumber(s.work?.activeReward,0,0,1e9),activeCarId:intNumber(s.work?.activeCarId,0,0,100000),
+      chipQuestDay:safeText(s.work?.chipQuestDay,'',16),chipQuestProgress:intNumber(s.work?.chipQuestProgress,0,0,50),chipQuestClaimed:s.work?.chipQuestClaimed===true,
+      deliveryReadyAt:intNumber(s.work?.deliveryReadyAt,0,0,Date.now()+365*86400000)
+    },
     plates:Array.isArray(s.plates)?s.plates.slice(-100).filter(plainObject).map(p=>({country:safeText(p.country,'RU',4),region:safeText(p.region,'77',8),number:safeText(p.number,'A000AA',16),rarity:safeText(p.rarity,'common',16)})):[],
     activePlate:Number.isFinite(Number(s.activePlate))?Math.max(0,Math.floor(Number(s.activePlate))):0,
     maintenance:plainObject(s.maintenance)?s.maintenance:{},
@@ -284,12 +294,13 @@ const carsDB = [
    Progression is intentionally paced for weeks: early cars are reachable,
    high-end cars require career/ranked play instead of a one-day grind. */
 const ECONOMY_V12_6 = {
-  carPrices:{1:0,2:3600,3:8200,4:14500,5:19000,6:27500,7:34000,8:39000,9:52000,10:30000,11:45000,12:49000,13:68000,14:78000,15:85000,16:120000,17:150000,18:175000,19:205000,20:255000,21:330000,22:410000,23:470000,24:650000,25:900000},
-  casinoMax:()=>Math.max(50,Math.min(Number(state?.chips)||0,2500,100+(Number(state?.level)||1)*60)),
+  // v15: game-realistic ruble-like price ladder, currency name stays SYND.
+  carPrices:{1:60000,2:320000,3:850000,4:1850000,5:2200000,6:3200000,7:2700000,8:2500000,9:4800000,10:3600000,11:4700000,12:4200000,13:8500000,14:11200000,15:12900000,16:19800000,17:29500000,18:16500000,19:12400000,20:28500000,21:35500000,22:52000000,23:33000000,24:48500000,25:280000000},
+  casinoMax:()=>Math.max(1000,Math.min(Number(state?.coins)||0,250000,5000+(Number(state?.level)||1)*7500)),
   raceReward:(opp:any)=>{
     const power=Math.max(100,Number(opp?.power)||200),lvl=Math.max(1,Number(opp?.unlockLevel)||1);
-    const base=Math.max(90,Math.round(power*.50+lvl*13));
-    return Math.round(base*(opp?.boss?1.35:1));
+    const base=Math.max(9000,Math.round(2500+power*54+lvl*1800));
+    return Math.round(base*(opp?.boss?1.45:1));
   }
 };
 function applyEconomyCarPrices(list:any[]=carsDB){list.forEach((car:any)=>{const v=(ECONOMY_V12_6.carPrices as any)[Number(car.id)];if(Number.isFinite(v))car.price=v;});return list;}
@@ -419,14 +430,14 @@ const tournamentsDB = [
   { id:'t2', name:"Кубок Синдиката", power:900, reward:9000, entryFee:1200, unlockLevel:7, taunt:"Только сильнейшие доходят до финала." },
   { id:'t3', name:"Гран-При Подполья", power:1400, reward:30000, entryFee:4000, unlockLevel:13, taunt:"Легенды подполья рождаются здесь." }
 ];
-function entryFeeFor(opp){ return opp.entryFee!==undefined ? opp.entryFee : Math.round(opp.reward*0.12)+20; }
+function entryFeeFor(opp){ return opp.entryFee!==undefined ? opp.entryFee : Math.max(2500,Math.round((Number(opp.reward)||0)*0.10)); }
 function fuelCostFor(opp){ return opp.boss ? 26 : (opp.entryFee!==undefined ? 22 : 14); }
 
 /* ==================== JOBS ==================== */
 const jobsDB = [
-  { id:"wash", name:"Мойка тачек в гараже", desc:"Стабильный небольшой заработок", reward:60, xp:4, cooldown:90 },
-  { id:"delivery", name:"Доставка запчастей", desc:"Средняя смена с нормальной выплатой", reward:110, xp:7, cooldown:240 },
-  { id:"taxi", name:"Ночной таксист", desc:"Длинная смена с повышенной выплатой", reward:190, xp:11, cooldown:600 }
+  { id:"wash", name:"Мойка тачек в гараже", desc:"Стабильный небольшой заработок", reward:8000, xp:4, cooldown:90 },
+  { id:"delivery", name:"Доставка запчастей", desc:"Средняя смена с нормальной выплатой", reward:14000, xp:7, cooldown:240 },
+  { id:"taxi", name:"Ночной таксист", desc:"Длинная смена с повышенной выплатой", reward:18000, xp:11, cooldown:600 }
 ];
 
 /* ==================== ДПС (ПОЛИЦИЯ) ==================== */
@@ -437,13 +448,13 @@ const POLICE_LINES = [
   "«Ты не в кино, притормози.»",
   "«Опять ты? Третий раз за неделю вижу эту тачку.»"
 ];
-const POLICE_BASE_FINE = 180;
-const LICENSE_BASE_PRICE = 900;
-function licensePrice(){ return LICENSE_BASE_PRICE + state.licenseSuspendCount*350; }
+const POLICE_BASE_FINE = 12000;
+const LICENSE_BASE_PRICE = 45000;
+function licensePrice(){ return LICENSE_BASE_PRICE + state.licenseSuspendCount*15000; }
 
 /* ==================== БАНК ==================== */
-const BANK_MAX_PER_TRANSFER = 800;
-const BANK_MAX_PER_DAY = 2000;
+const BANK_MAX_PER_TRANSFER = 250000;
+const BANK_MAX_PER_DAY = 750000;
 const BANK_COOLDOWN_MS = 10*60*1000; // 10 минут между переводами одному игроку
 
 
@@ -505,7 +516,7 @@ function addXP(n){
   state.xp+=n;
   let leveled=false;
   while(state.xp>=xpNeeded(state.level)){ state.xp-=xpNeeded(state.level); state.level++; leveled=true; }
-  if(leveled){ const bonus=Math.min(1000,60+state.level*20); awardMoney(bonus,'ПОВЫШЕНИЕ УРОВНЯ'); showToast('Новый уровень · LVL '+state.level); }
+  if(leveled){ const bonus=Math.min(75000,5000+state.level*1500); awardMoney(bonus,'ПОВЫШЕНИЕ УРОВНЯ'); showToast('Новый уровень · LVL '+state.level); }
   updateHeader();
 }
 
@@ -553,8 +564,8 @@ function tapLogo(){
   state.logoTaps=0;
   const now=Date.now();
   if(now-(state.secretBonusAt||0)<24*60*60*1000){ showToast('Синдикат уже выдал скрытый бонус сегодня.'); saveState(); return; }
-  state.secretBonusAt=now; state.coins+=250; state.stats.totalEarned+=250; state.nitro+=1;
-  showToast(' Тайник синдиката: +250 SYND и 1 нитро');
+  state.secretBonusAt=now; state.coins+=15000; state.stats.totalEarned+=15000; state.nitro+=1;
+  showToast(' Тайник синдиката: +15 000 SYND и 1 нитро');
   haptic('success'); updateHeader(); saveState(); checkAchievements();
 }
 
@@ -810,7 +821,7 @@ function renderJobs(){
     const remaining = Math.max(0, Math.ceil((readyAt-now)/1000));
     const ready = remaining<=0;
     container.innerHTML += '<div class="job-card">'+
-        '<div class="job-head"><span class="job-name">'+job.name+'</span><span class="job-reward">+'+fmt(job.reward)+' ◈</span></div>'+
+        '<div class="job-head"><span class="job-name">'+job.name+'</span><span class="job-reward">+'+fmt(job.reward)+' SYND</span></div>'+
         '<div class="job-desc">'+job.desc+'</div>'+
         '<button class="job-btn" id="job-btn-'+job.id+'" onclick="doJob(\''+job.id+'\')" '+(ready?'':'disabled')+'>'+(ready ? 'ВЫПОЛНИТЬ' : 'Отдых: '+remaining+'с')+'</button>'+
       '</div>';
@@ -819,12 +830,13 @@ function renderJobs(){
 function doJob(jobId){
   const job=jobsDB.find(j=>j.id===jobId),now=Date.now(); if(!job)return;
   const readyAt=state.jobCooldowns[jobId]||0;if(now<readyAt)return;
-  state.chips=(Number(state.chips)||0)+job.reward;state.chipLedger=(state.chipLedger||[]).concat({delta:job.reward,reason:'job_'+job.id,ts:Date.now()}).slice(-100);addXP(job.xp||5);state.jobCooldowns[jobId]=now+job.cooldown*1000;
+  state.coins=(Number(state.coins)||0)+job.reward;state.stats.totalEarned=(Number(state.stats.totalEarned)||0)+job.reward;addXP(job.xp||5);state.jobCooldowns[jobId]=now+job.cooldown*1000;
   if(jobId==='wash') reduceHeat(1); recordContractEvent('job',1); haptic('success');
-  showToast(' '+job.name+': +'+fmt(job.reward)+' ЧИПОВ');updateHeader();renderJobs();saveState();
+  showToast(' '+job.name+': +'+fmt(job.reward)+' SYND');updateHeader();renderJobs();saveState();
 }
 setInterval(()=>{
   if(document.getElementById('screen-jobs').classList.contains('active')) renderJobs();
+  if(document.getElementById('screen-chips')?.classList.contains('active')) (window as any).renderChipCenterV15?.();
 },1000);
 
 /* ==================== CASINO HUB ==================== */
@@ -833,7 +845,7 @@ function renderCasinoHub(){
   const c = document.getElementById('casino-hub-list');
   const stats=document.getElementById('casino-session-stats');
   const wagered=Number(state.stats.casinoWagered)||0,won=Number(state.stats.casinoWon)||0;
-  if(stats) stats.innerHTML='<div><span>Поставлено</span><b>'+fmt(wagered)+' CHIPS</b></div><div><span>Выиграно</span><b>'+fmt(won)+' CHIPS</b></div><div><span>Результат</span><b class="'+(won-wagered>=0?'positive':'')+'">'+(won-wagered>=0?'+':'')+fmt(won-wagered)+' CHIPS</b></div>';
+  if(stats) stats.innerHTML='<div><span>Поставлено</span><b>'+fmt(wagered)+' SYND</b></div><div><span>Выиграно</span><b>'+fmt(won)+' SYND</b></div><div><span>Результат</span><b class="'+(won-wagered>=0?'positive':'')+'">'+(won-wagered>=0?'+':'')+fmt(won-wagered)+' SYND</b></div>';
   if(!c)return;
   c.innerHTML =
     '<button class="casino-card casino-card-premium" onclick="switchTab(\'blackjack\')"><div class="casino-card-index">01</div><div class="casino-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="4" width="12" height="17" rx="2"/><rect x="10" y="2" width="12" height="17" rx="2"/></svg></div><div class="casino-info"><b>Блэкджек 21</b><span>Классический стол · дилер останавливается на 17</span></div><div class="casino-card-arrow">›</div></button>'+
@@ -847,7 +859,7 @@ function clampBet(input, min){
   const hardMax=ECONOMY_V12_6.casinoMax();
   if(v<min) v=min;
   if(v>hardMax) v=hardMax;
-  if(v>state.chips) v=state.chips;
+  if(v>state.coins) v=state.coins;
   input.value=v;
   return v;
 }
@@ -888,15 +900,15 @@ function bjRenderHands(hideDealer){
 function bjDeal(){
   if(bj && !bj.done)return;
   const bet = clampBet(document.getElementById('bj-bet-input'),10);
-  if(bet>state.chips || bet<10){ showToast("Некорректная ставка"); return; }
-  state.chips-=bet; state.stats.casinoWagered+=bet; updateHeader();
+  if(bet>state.coins || bet<10){ showToast("Некорректная ставка"); return; }
+  state.coins-=bet; state.stats.casinoWagered+=bet; updateHeader();
   const deck=bjNewDeck();
   bj = { deck, bet, player:[deck.pop(),deck.pop()], dealer:[deck.pop(),deck.pop()], done:false, doubled:false };
   document.getElementById('bj-message').innerText='';
   document.getElementById('bj-bet-panel').style.display='none';
   const ap=document.getElementById('bj-action-panel');
   ap.style.display='flex';
-  const canDouble = state.chips>=bet;
+  const canDouble = state.coins>=bet;
   ap.innerHTML = '<button class="btn btn-select" onclick="bjHit()">ЕЩЁ</button>'+
     '<button class="btn btn-ghost" onclick="bjStand()">ХВАТИТ</button>'+
     '<button class="btn btn-gold" '+(canDouble?'':'disabled')+' onclick="bjDouble()">УДВОИТЬ</button>';
@@ -911,8 +923,8 @@ function bjHit(){
   else if(bjCardValue(bj.player)===21){ bjStand(); }
 }
 function bjDouble(){
-  if(bj.done || state.chips<bj.bet) return;
-  state.chips-=bj.bet; state.stats.casinoWagered+=bj.bet; updateHeader();
+  if(bj.done || state.coins<bj.bet) return;
+  state.coins-=bj.bet; state.stats.casinoWagered+=bj.bet; updateHeader();
   bj.bet*=2; bj.doubled=true;
   bj.player.push(bj.deck.pop());
   bjRenderHands(true);
@@ -944,7 +956,7 @@ function bjEnd(result){
   } else if(result==='push'){ payout=bj.bet; text=' НИЧЬЯ — ставка возвращена'; msg.style.color='var(--text-muted)'; }
   else { text=' ДИЛЕР СИЛЬНЕЕ — вы проиграли'; msg.style.color='var(--accent)'; payout=0; }
   msg.innerText=text;
-  if(payout>0){ state.chips+=payout; state.stats.casinoWon+=Math.max(0,payout-bj.bet); }
+  if(payout>0){ state.coins+=payout; state.stats.casinoWon+=Math.max(0,payout-bj.bet); }
   updateHeader();
   flashResult(document.querySelector('#screen-blackjack .game-table'), payout>bj.bet || payout===bj.bet);
   document.getElementById('bj-action-panel').style.display='none';
@@ -981,8 +993,8 @@ function rltSpin(){
   if(rltSpinning)return;
   if(!rltSelection){ showToast("Выберите ставку: число, цвет или диапазон"); return; }
   const bet = clampBet(document.getElementById('rlt-bet-input'),10);
-  if(bet>state.chips || bet<10){ showToast("Некорректная ставка"); return; }
-  state.chips-=bet; state.stats.casinoWagered+=bet; updateHeader();rltSpinning=true;
+  if(bet>state.coins || bet<10){ showToast("Некорректная ставка"); return; }
+  state.coins-=bet; state.stats.casinoWagered+=bet; updateHeader();rltSpinning=true;
   const resEl=document.getElementById('rlt-result');
   resEl.style.background='#1a1a24'; resEl.innerText='...';
   setTimeout(()=>{
@@ -1003,7 +1015,7 @@ function rltSpin(){
     const table = document.querySelector('#screen-roulette');
     if(win){
       const payout = bet + bet*mult;
-      state.chips+=payout; state.stats.casinoWon += payout-bet;
+      state.coins+=payout; state.stats.casinoWon += payout-bet;
       showToast(" Выигрыш! +"+fmt(payout-bet)+" ");
       flashResult(table, true);
     } else {
@@ -1029,8 +1041,8 @@ const SLOT_PAYOUTS = {BOLT:3,DIAMOND:4,STAR:6,CROWN:10,BAR:20,'777':50};
 function slotsSpin(){
   if(slotsSpinning)return;
   const bet = clampBet(document.getElementById('slots-bet-input'),10);
-  if(bet>state.chips || bet<10){ showToast("Некорректная ставка"); return; }
-  state.chips-=bet; state.stats.casinoWagered+=bet; updateHeader();slotsSpinning=true;
+  if(bet>state.coins || bet<10){ showToast("Некорректная ставка"); return; }
+  state.coins-=bet; state.stats.casinoWagered+=bet; updateHeader();slotsSpinning=true;
   const reels=[document.getElementById('reel0'),document.getElementById('reel1'),document.getElementById('reel2')];
   reels.forEach(r=>r.classList.add('spin'));
   document.getElementById('slots-message').innerText='';
@@ -1051,7 +1063,7 @@ function slotsSpin(){
         msg = ' Пара совпала — небольшой выигрыш';
       } else { msg='Не повезло, крутите ещё'; }
       const table=document.querySelector('#screen-slots');
-      if(payout>0){ state.chips+=payout; state.stats.casinoWon+=payout-bet; flashResult(table,true); }
+      if(payout>0){ state.coins+=payout; state.stats.casinoWon+=payout-bet; flashResult(table,true); }
       else { flashResult(table,false); }
       document.getElementById('slots-message').innerText=msg;
       document.getElementById('slots-message').style.color = payout>0?'var(--green)':'var(--text-muted)';
@@ -1074,9 +1086,9 @@ function diceMaxBet(){ document.getElementById('dice-bet-input').value=ECONOMY_V
 function diceRoll(){
   if(diceRolling)return;
   const bet = clampBet(document.getElementById('dice-bet-input'),10);
-  if(bet>state.chips || bet<10){ showToast("Некорректная ставка"); return; }
+  if(bet>state.coins || bet<10){ showToast("Некорректная ставка"); return; }
   const target = parseInt(document.getElementById('dice-slider').value);
-  state.chips-=bet; state.stats.casinoWagered+=bet; updateHeader();diceRolling=true;
+  state.coins-=bet; state.stats.casinoWagered+=bet; updateHeader();diceRolling=true;
   const resEl=document.getElementById('dice-result');
   resEl.innerText='...'; resEl.style.color='var(--text-muted)';
   setTimeout(()=>{
@@ -1087,7 +1099,7 @@ function diceRoll(){
     if(win){
       const mult = 97/(target-1);
       const payout = Math.round(bet*mult);
-      state.chips+=payout; state.stats.casinoWon+=payout-bet;
+      state.coins+=payout; state.stats.casinoWon+=payout-bet;
       resEl.style.color='var(--green)';
       showToast(" Выигрыш! +"+fmt(payout-bet)+" ");
       flashResult(table,true);
@@ -1102,18 +1114,18 @@ function diceRoll(){
 
 /* ==================== ACHIEVEMENTS ==================== */
 const achievementsDB = [
-  { id:'first_win', name:'Первая кровь', desc:'Выиграй свою первую дуэль', icon:'', reward:100, check:s=>s.stats.wins>=1 },
-  { id:'ten_wins', name:'Ветеран трассы', desc:'Одержи 10 побед', icon:'', reward:500, check:s=>s.stats.wins>=10 },
-  { id:'five_cars', name:'Коллекционер', desc:'Владей 5 машинами одновременно', icon:'', reward:400, check:s=>s.ownedCars.length>=5 },
-  { id:'all_cars', name:'Весь гараж синдиката', desc:'Собери все машины в игре', icon:'', reward:5000, check:s=>s.ownedCars.length>=25 },
-  { id:'lvl10', name:'Авторитет района', desc:'Достигни 10 уровня', icon:'⭐', reward:600, check:s=>s.level>=10 },
-  { id:'first_fine', name:'Знакомство с ДПС', desc:'Получи первый штраф от полиции', icon:'', reward:50, check:s=>s.stats.finesCount>=1 },
-  { id:'bj_win', name:'Карточный игрок', desc:'Выиграй раунд в блэкджек', icon:'', reward:150, check:s=>(s.stats.blackjackWins||0)>=1 },
-  { id:'max_tune', name:'Гараж мечты', desc:'Прокачай тюнинг любой машины до максимума во всех категориях', icon:'', reward:800, check:s=>Object.values(s.upgrades).some(u=>u && TUNE_TYPES.every(t=>u[t.key]>=t.hpPerStage.length)) },
-  { id:'earn50k', name:'Барон подполья', desc:'Заработай суммарно 50 000 ', icon:'', reward:1000, check:s=>s.stats.totalEarned>=50000 },
-  { id:'daily7', name:'Верный синдикату', desc:'Забирай ежедневную награду 7 дней подряд', icon:'', reward:700, check:s=>s.dailyStreak>=7 },
-  { id:'secret_car', name:'Тень подполья', desc:'Стань владельцем легендарной машины', icon:'', reward:1500, check:s=>s.ownedCars.includes(24)||s.ownedCars.includes(25) },
-  { id:'boss_slayer', name:'Убийца боссов', desc:'Победи одного из боссов подполья', icon:'', reward:2000, check:s=>(s.stats.bossWins||0)>=1 }
+  { id:'first_win', name:'Первая кровь', desc:'Выиграй свою первую дуэль', icon:'', reward:12000, check:s=>s.stats.wins>=1 },
+  { id:'ten_wins', name:'Ветеран трассы', desc:'Одержи 10 побед', icon:'', reward:65000, check:s=>s.stats.wins>=10 },
+  { id:'five_cars', name:'Коллекционер', desc:'Владей 5 машинами одновременно', icon:'', reward:90000, check:s=>s.ownedCars.length>=5 },
+  { id:'all_cars', name:'Весь гараж синдиката', desc:'Собери все машины в игре', icon:'', reward:750000, check:s=>s.ownedCars.length>=25 },
+  { id:'lvl10', name:'Авторитет района', desc:'Достигни 10 уровня', icon:'⭐', reward:120000, check:s=>s.level>=10 },
+  { id:'first_fine', name:'Знакомство с ДПС', desc:'Получи первый штраф от полиции', icon:'', reward:8000, check:s=>s.stats.finesCount>=1 },
+  { id:'bj_win', name:'Карточный игрок', desc:'Выиграй раунд в блэкджек', icon:'', reward:18000, check:s=>(s.stats.blackjackWins||0)>=1 },
+  { id:'max_tune', name:'Гараж мечты', desc:'Прокачай тюнинг любой машины до максимума во всех категориях', icon:'', reward:250000, check:s=>Object.values(s.upgrades).some(u=>u && TUNE_TYPES.every(t=>u[t.key]>=t.hpPerStage.length)) },
+  { id:'earn50k', name:'Барон подполья', desc:'Заработай суммарно 50 000 ', icon:'', reward:150000, check:s=>s.stats.totalEarned>=50000 },
+  { id:'daily7', name:'Верный синдикату', desc:'Забирай ежедневную награду 7 дней подряд', icon:'', reward:100000, check:s=>s.dailyStreak>=7 },
+  { id:'secret_car', name:'Тень подполья', desc:'Стань владельцем легендарной машины', icon:'', reward:500000, check:s=>s.ownedCars.includes(24)||s.ownedCars.includes(25) },
+  { id:'boss_slayer', name:'Убийца боссов', desc:'Победи одного из боссов подполья', icon:'', reward:250000, check:s=>(s.stats.bossWins||0)>=1 }
 ];
 function checkAchievements(){
   let any=false;
@@ -1232,12 +1244,12 @@ const DISTRICTS=[
   {id:'silverton',name:'Сильвертон',unlockLevel:13,target:3000,next:6000,desc:'Финальный район синдиката: боссы, высокий HEAT и большие ставки.'}
 ];
 const CONTRACT_POOL=[
-  {id:'races3',event:'race',target:3,reward:120,name:'На линии',desc:'Заверши 3 уличных заезда.'},
-  {id:'wins2',event:'win',target:2,reward:160,name:'Без права на ошибку',desc:'Выиграй 2 заезда.'},
-  {id:'shift4',event:'perfectShift',target:4,reward:140,name:'Идеальная КПП',desc:'Сделай 4 идеальных переключения.'},
-  {id:'job2',event:'job',target:2,reward:100,name:'Запасной план',desc:'Выполни 2 подработки.'},
-  {id:'nitro1',event:'nitro',target:1,reward:120,name:'На полном баллоне',desc:'Используй нитро в заезде.'},
-  {id:'buy1',event:'buy',target:1,reward:150,name:'Расширение гаража',desc:'Купи одну машину.'}
+  {id:'races3',event:'race',target:3,reward:12000,name:'На линии',desc:'Заверши 3 уличных заезда.'},
+  {id:'wins2',event:'win',target:2,reward:18000,name:'Без права на ошибку',desc:'Выиграй 2 заезда.'},
+  {id:'shift4',event:'perfectShift',target:4,reward:15000,name:'Идеальная КПП',desc:'Сделай 4 идеальных переключения.'},
+  {id:'job2',event:'job',target:2,reward:10000,name:'Запасной план',desc:'Выполни 2 подработки.'},
+  {id:'nitro1',event:'nitro',target:1,reward:12000,name:'На полном баллоне',desc:'Используй нитро в заезде.'},
+  {id:'buy1',event:'buy',target:1,reward:25000,name:'Расширение гаража',desc:'Купи одну машину.'}
 ];
 function haptic(type='light'){
   if(!state.settings?.haptics)return;
@@ -1285,7 +1297,7 @@ function toggleSetting(key){
 }
 
 /* ==================== DAILY REWARD ==================== */
-const DAILY_REWARDS = [120,160,220,300,400,550,800];
+const DAILY_REWARDS = [8000,12000,18000,26000,38000,55000,85000];
 function checkDailyEligible(){
   const now=Date.now();
   const hours = (now-state.lastDailyClaim)/3600000;
@@ -3274,6 +3286,7 @@ async function claimPvpResults(){
       }
     }catch(e){console.warn('case reconcile',e?.message||e);}
   }
+  (window as any).reconcileCaseRollsV15=reconcileCaseRolls;
 
   renderCases=function(){
     const root=document.getElementById('cases-list');if(!root)return;const hist=(state.caseHistory||[]).slice().reverse();
@@ -3345,10 +3358,10 @@ async function claimPvpResults(){
     ['reel0','reel1','reel2'].forEach((id,i)=>{const r=document.getElementById(id);if(r&&!r.dataset.v9){r.dataset.v9='1';r.classList.add('reel-v9');r.innerHTML='<div class="slot-strip-v9">'+slotSvg(['bar','seven','diamond'][i])+'</div>';}});
   }
   slotsSpin=function(){
-    if(slotsSpinning)return;initSlotsV9();const input=document.getElementById('slots-bet-input'),bet=clampBet(input,10);if(bet>state.chips||bet<10){showToast('Некорректная ставка');return;}
-    state.chips-=bet;state.stats.casinoWagered+=bet;updateHeader();saveState();slotsSpinning=true;const final=[slotPick(),slotPick(),slotPick()];const reels=[0,1,2].map(i=>document.getElementById('reel'+i));document.getElementById('slots-message').textContent='Барабаны вращаются...';
+    if(slotsSpinning)return;initSlotsV9();const input=document.getElementById('slots-bet-input'),bet=clampBet(input,10);if(bet>state.coins||bet<10){showToast('Некорректная ставка');return;}
+    state.coins-=bet;state.stats.casinoWagered+=bet;updateHeader();saveState();slotsSpinning=true;const final=[slotPick(),slotPick(),slotPick()];const reels=[0,1,2].map(i=>document.getElementById('reel'+i));document.getElementById('slots-message').textContent='Барабаны вращаются...';
     reels.forEach((reel,i)=>{const seq=[];for(let j=0;j<14+i*2;j++)seq.push(slotPick());seq.push(final[i]);const strip=document.createElement('div');strip.className='slot-strip-v9';strip.innerHTML=seq.map(s=>slotSvg(s.id)).join('');reel.innerHTML='';reel.appendChild(strip);strip.style.transitionDuration=(1.05+i*.16)+'s';requestAnimationFrame(()=>requestAnimationFrame(()=>{strip.style.transform='translate3d(0,-'+((seq.length-1)*86)+'px,0)';}));});
-    const settle=()=>{let payout=0,msg='Комбинация не сыграла';if(final[0].id===final[1].id&&final[1].id===final[2].id){payout=bet*final[0].mult;msg='ДЖЕКПОТ · '+final[0].label+' ×'+final[0].mult;}else if(final[0].id===final[1].id||final[1].id===final[2].id||final[0].id===final[2].id){payout=Math.round(bet*1.5);msg='ПАРА · ×1.5';}if(payout>0){state.chips+=payout;state.stats.casinoWon+=Math.max(0,payout-bet);flashResult(document.querySelector('#screen-slots'),true);}else flashResult(document.querySelector('#screen-slots'),false);const m=document.getElementById('slots-message');m.textContent=msg+(payout?' · +'+fmt(payout)+' CHIPS':'');m.style.color=payout>0?'var(--green)':'var(--text-muted)';slotsSpinning=false;updateHeader();saveState();checkAchievements();};
+    const settle=()=>{let payout=0,msg='Комбинация не сыграла';if(final[0].id===final[1].id&&final[1].id===final[2].id){payout=bet*final[0].mult;msg='ДЖЕКПОТ · '+final[0].label+' ×'+final[0].mult;}else if(final[0].id===final[1].id||final[1].id===final[2].id||final[0].id===final[2].id){payout=Math.round(bet*1.5);msg='ПАРА · ×1.5';}if(payout>0){state.coins+=payout;state.stats.casinoWon+=Math.max(0,payout-bet);flashResult(document.querySelector('#screen-slots'),true);}else flashResult(document.querySelector('#screen-slots'),false);const m=document.getElementById('slots-message');m.textContent=msg+(payout?' · +'+fmt(payout)+' SYND':'');m.style.color=payout>0?'var(--green)':'var(--text-muted)';slotsSpinning=false;updateHeader();saveState();checkAchievements();};
     const last=reels[2]?.querySelector('.slot-strip-v9');if(last){let done=false;const f=()=>{if(done)return;done=true;settle();};last.addEventListener('transitionend',f,{once:true});setTimeout(f,1900);}else settle();
   };
 
@@ -3692,7 +3705,7 @@ if (typeof window !== 'undefined') {
     // receive the same starter state on every device.
     const localIsFresh=(Number(state.stats?.races)||0)===0 && (Number(state.stats?.totalEarned)||0)===0 && (state.ownedCars||[]).length<=1;
     if(localIsFresh){
-      state.coins=Math.max(0,Number(serverPlayer.balance)||1500);
+      state.coins=Math.max(0,Number(serverPlayer.balance ?? 1500));
       state.level=Math.max(1,Number(serverPlayer.level)||1);
       state.xp=Math.max(0,Number(serverPlayer.xp)||0);
       state.ownedCars=serverOwned.length?serverOwned:[1];
@@ -4010,7 +4023,7 @@ if (typeof window !== 'undefined') {
     const c=startFeatureRace(cop,'chase');
     if(c){
       c.mode='chase';c.lanes=2;c.chase=true;c.isPolice=true;c.trackLength=1500;c.distance=80;c.aiDistance=0;
-      c.chipsReward=8+Math.floor(Math.random()*17);c.syndReward=Math.round(economyRaceReward({power:getEffectivePower(car),unlockLevel:state.level})*1.75);c.radarChance=0;
+      c.chipsReward=2+Math.floor(Math.random()*4);c.syndReward=Math.round(economyRaceReward({power:getEffectivePower(car),unlockLevel:state.level})*1.75);c.radarChance=0;
       if(c.opp){(c.opp as any).chase=true;(c.opp as any).isPolice=true;(c.opp as any).reward=0;(c.opp as any).name='🚔 ДПС · Патруль №'+patrolNo;}
       renderRaceBrief();
     }
@@ -4164,7 +4177,7 @@ if (typeof window !== 'undefined') {
         return;
       }
       if(playerWins){
-        const reward=Math.max(8, Number(ctx.chipsReward)||12);
+        const reward=Math.max(2, Number(ctx.chipsReward)||2);
         chipAdd(reward,'special_chase_escape');
         state.heat=Math.max(0,(Number(state.heat)||0)-2);
         try{updateHeaderFeature();}catch(_){}
@@ -4185,7 +4198,7 @@ if (typeof window !== 'undefined') {
   upgradeTune=function(carId,key){
     const car=carsDB.find((x:any)=>x.id===carId),upg=getUpg(carId),lvl=Number(upg[key]||0);
     if(!car||lvl>=5){baseUpgrade(carId,key);return;}
-    const chipCost=3+lvl*2;
+    const chipCost=1+Math.floor(lvl/2);
     if(!chipSpend(chipCost,'tuning_'+key)){openTune(carId);return;}
     const before=lvl;
     baseUpgrade(carId,key);
@@ -4373,7 +4386,7 @@ if (typeof window !== 'undefined') {
   setTimeout(renderChatBadge,250);
   const oldOpenChat=openChat;
   openChat=function(){state.unreadChat=0;updateHeaderFeature();oldOpenChat();};
-  setInterval(()=>{if(Math.random()<.08&&!document.getElementById('screen-chat')?.classList.contains('active')){state.unreadChat=Math.min(99999,state.unreadChat+1);updateHeaderFeature();}},12000);
+  /* v15: removed fake random chat unread ticker; unread changes only from real messages. */
 
   setTimeout(()=>{const dead=document.getElementById('plate-hub');if(dead)dead.remove();},50);
 
@@ -4413,7 +4426,7 @@ if (typeof window !== 'undefined') {
       document.querySelectorAll('#tune-list .tune-btn').forEach((btn:any)=>{
         const onclick=String(btn.getAttribute('onclick')||''),m=onclick.match(/upgradeTune\((\d+),'([^']+)'/);
         if(!m)return;
-        const lvl=Number(getUpg(Number(m[1]))[m[2]]||0),chips=3+lvl*2;
+        const lvl=Number(getUpg(Number(m[1]))[m[2]]||0),chips=1+Math.floor(lvl/2);
         if(lvl<5)btn.innerHTML=btn.textContent+' · '+chips+' ◈';
       });
       const title=document.getElementById('tune-car-title');if(title&&!title.textContent?.includes('CHIPS'))title.textContent+=' · SYND + CHIPS';
@@ -4449,7 +4462,7 @@ if (typeof window !== 'undefined') {
 /* ==================== UX + GAMEPLAY FIXPACK 14 ==================== */
 (() => {
   const WANTED_DECAY_MS=30*60*1000;
-  const wantedCost=2000;
+  const wantedCost=75000;
   const priorHeaderV14=updateHeader;
   updateHeader=function(){priorHeaderV14();const chips=document.getElementById('chips-display');if(chips)chips.textContent=fmt(Number(state.chips)||0);};
   (window as any).updateHeader=updateHeader;
@@ -4547,7 +4560,7 @@ if (typeof window !== 'undefined') {
       const car=carsDB.find((x:any)=>x.id===state.activeCarId);state.stats.races++;if(car)state.condition[car.id]=Math.max(0,getCondition(car.id)-3);
       const root=document.getElementById('race-content');
       if(playerWins){
-        state.stats.wins++;state.winStreak=(state.winStreak||0)+1;const synd=Math.max(120,Number(c.syndReward)||Math.round(economyRaceReward({power:getEffectivePower(car),unlockLevel:state.level})*1.75)),chips=Math.max(8,Number(c.chipsReward)||12);state.coins+=synd;state.stats.totalEarned+=synd;state.chips=(Number(state.chips)||0)+chips;state.chipLedger=(state.chipLedger||[]).concat({delta:chips,reason:'special_chase_escape',ts:Date.now()}).slice(-100);reduceHeat(1);addXP(24);recordRaceTelemetry({ts:Date.now(),won:true,opponent:'ДПС',route:c.route||'Спец-погоня',time:c.elapsed,topSpeed:c.topSpeed||c.speed,perfectShifts:c.perfectShifts||0,nitroUsed:c.nitroUsed});root.innerHTML='<div class="race3"><div class="result-box win chase-result-v14"><div class="result-title">ПОБЕГ УДАЛСЯ</div><div class="result-sub">Ты дотянул до выхода из зоны погони. ДПС не успел сравняться.</div><div class="result-reward">+'+fmt(synd)+' SYND</div><div class="result-reward chips-v14">+'+fmt(chips)+' ◈ ЧИПОВ</div><div class="xp-gain-box">⭐ +24 XP · '+Number(c.elapsed||0).toFixed(2)+' c · МАКС. '+Math.round(c.topSpeed||c.speed||0)+' км/ч</div></div><div class="list-container"><button class="btn btn-select" onclick="switchTab(\'duel-select\')">ЕЩЁ ЗАЕЗД</button><button class="btn btn-ghost" onclick="switchTab(\'garage\')">В ГАРАЖ</button></div></div>';
+        state.stats.wins++;state.winStreak=(state.winStreak||0)+1;const synd=Math.max(120,Number(c.syndReward)||Math.round(economyRaceReward({power:getEffectivePower(car),unlockLevel:state.level})*1.75)),chips=Math.max(2,Number(c.chipsReward)||2);state.coins+=synd;state.stats.totalEarned+=synd;state.chips=(Number(state.chips)||0)+chips;state.chipLedger=(state.chipLedger||[]).concat({delta:chips,reason:'special_chase_escape',ts:Date.now()}).slice(-100);reduceHeat(1);addXP(24);recordRaceTelemetry({ts:Date.now(),won:true,opponent:'ДПС',route:c.route||'Спец-погоня',time:c.elapsed,topSpeed:c.topSpeed||c.speed,perfectShifts:c.perfectShifts||0,nitroUsed:c.nitroUsed});root.innerHTML='<div class="race3"><div class="result-box win chase-result-v14"><div class="result-title">ПОБЕГ УДАЛСЯ</div><div class="result-sub">Ты дотянул до выхода из зоны погони. ДПС не успел сравняться.</div><div class="result-reward">+'+fmt(synd)+' SYND</div><div class="result-reward chips-v14">+'+fmt(chips)+' ◈ ЧИПОВ</div><div class="xp-gain-box">⭐ +24 XP · '+Number(c.elapsed||0).toFixed(2)+' c · МАКС. '+Math.round(c.topSpeed||c.speed||0)+' км/ч</div></div><div class="list-container"><button class="btn btn-select" onclick="switchTab(\'duel-select\')">ЕЩЁ ЗАЕЗД</button><button class="btn btn-ghost" onclick="switchTab(\'garage\')">В ГАРАЖ</button></div></div>';
       }else{
         state.stats.losses++;state.winStreak=0;addHeat(1);const fine=Math.max(120,Math.round(POLICE_BASE_FINE*wantedMultV14())),eventCash=Math.random()<.55?Math.max(0,Math.round(state.coins*(.05+Math.random()*.10))):0;state.coins=Math.max(0,state.coins-fine-eventCash);state.stats.finesPaid+=fine;state.stats.finesCount++;let eventText='';if(eventCash){eventText='<div class="result-reward">КОНФИСКАЦИЯ: −'+fmt(eventCash)+' SYND</div>';}else{state.arrestUntil=Date.now()+60000;eventText='<div class="arrest-v14">ВРЕМЕННЫЙ АРЕСТ · 60 СЕКУНД · дуэли недоступны</div>';}addXP(4);recordRaceTelemetry({ts:Date.now(),won:false,opponent:'ДПС',route:c.route||'Спец-погоня',time:c.elapsed,topSpeed:c.topSpeed||c.speed,perfectShifts:c.perfectShifts||0,nitroUsed:c.nitroUsed});root.innerHTML='<div class="race3"><div class="result-box lose chase-result-v14"><div class="result-title">🚔 ТЕБЯ ДОГНАЛИ</div><div class="result-sub">ПОПРОБУЙ УЙТИ ОТ ПОГОНИ</div><div class="result-reward">ШТРАФ: −'+fmt(fine)+' SYND</div>'+eventText+'<div class="xp-gain-box">⭐ +4 XP · награды за поражение нет</div></div><div class="list-container"><button class="btn btn-select" onclick="switchTab(\'garage\')">В ГАРАЖ</button><button class="btn btn-ghost" onclick="switchTab(\'jobs\')">ПОДРАБОТКА</button></div></div>';
       }
@@ -4562,4 +4575,252 @@ if (typeof window !== 'undefined') {
   // Final image-fit and lane arrangement hooks happen in CSS; render once with v14 logic.
   (window as any).selectCar=selectCar;(window as any).renderGarage=renderGarage;(window as any).renderShop=renderShop;(window as any).renderOpponents=renderOpponents;(window as any).renderProfile=renderProfile;(window as any).prepareRace=prepareRace;(window as any).finishRace=finishRace;(window as any).updateRaceHUD=updateRaceHUD;(window as any).policeChoice=policeChoice;
   syncWantedDecayV14();renderGarage();renderShop();
+})();
+
+/* ==================== ECONOMY + WORK + UX UPDATE 15 ==================== */
+(() => {
+  const CHIP_QUEST_TARGET=3;
+  const TOW_TRUCK_PRICE=650000;
+  const TOW_SHIFT_MS=15*60*1000;
+  const DELIVERY_COOLDOWN_MS=30*60*1000;
+  const BOT_VISUAL_NAMES=['Шахист_77','StreetKing','Дядя Вася','TurboRacer','Smokie_Rider','NightFox','Black_ICE','Redline','GhostDriver','Механик_13','Kira','Rook','Vanta','Lynx','Nocturne'];
+
+  function ensureWorkV15(){
+    if(!plainObject(state.work)) state.work={};
+    const w=state.work;
+    w.taxiJobs=Math.max(0,Number(w.taxiJobs)||0);w.theftJobs=Math.max(0,Number(w.theftJobs)||0);
+    w.towTruckOwned=w.towTruckOwned===true;w.towTruckUntil=Math.max(0,Number(w.towTruckUntil)||0);w.towTruckStartedAt=Math.max(0,Number(w.towTruckStartedAt)||0);w.towTruckReward=Math.max(0,Number(w.towTruckReward)||0);
+    w.activeType=String(w.activeType||'');w.activeUntil=Math.max(0,Number(w.activeUntil)||0);w.activeStartedAt=Math.max(0,Number(w.activeStartedAt)||0);w.activeReward=Math.max(0,Number(w.activeReward)||0);w.activeCarId=Math.max(0,Number(w.activeCarId)||0);
+    const day=new Date().toISOString().slice(0,10);
+    if(w.chipQuestDay!==day){w.chipQuestDay=day;w.chipQuestProgress=0;w.chipQuestClaimed=false;}
+    w.chipQuestProgress=Math.max(0,Math.min(CHIP_QUEST_TARGET,Number(w.chipQuestProgress)||0));w.deliveryReadyAt=Math.max(0,Number(w.deliveryReadyAt)||0);
+    return w;
+  }
+  ensureWorkV15();
+
+  function addChipsV15(n:number,reason:string){
+    n=Math.max(0,Math.floor(Number(n)||0));if(!n)return false;
+    state.chips=Math.max(0,Number(state.chips)||0)+n;
+    if(!Array.isArray(state.chipLedger))state.chipLedger=[];
+    state.chipLedger.push({delta:n,reason,ts:Date.now()});state.chipLedger=state.chipLedger.slice(-100);
+    updateHeader();try{(window as any).updateHeaderFeature?.();}catch(_){}saveState();return true;
+  }
+  function spendChipsV15(n:number,reason:string){
+    n=Math.max(0,Math.floor(Number(n)||0));
+    if((Number(state.chips)||0)<n){showToast('Недостаточно Чипов');return false;}
+    state.chips=Math.max(0,(Number(state.chips)||0)-n);
+    if(!Array.isArray(state.chipLedger))state.chipLedger=[];
+    state.chipLedger.push({delta:-n,reason,ts:Date.now()});state.chipLedger=state.chipLedger.slice(-100);
+    updateHeader();try{(window as any).updateHeaderFeature?.();}catch(_){}saveState();return true;
+  }
+  (window as any).addChipsV15=addChipsV15;
+
+  function workCarV15(){return carsDB.find((c:any)=>c.id===state.activeCarId)||carsDB[0];}
+  function workPowerV15(car:any){return Math.max(100,Number(getEffectivePower(car))||Number(car?.power)||150);}
+  function taxiRewardV15(car:any){const p=workPowerV15(car),price=Math.max(60000,Number(car?.price)||60000);return Math.round((8000+p*35+Math.sqrt(price)*9)/500)*500;}
+  function taxiDurationV15(car:any){const p=workPowerV15(car);return Math.max(4,Math.min(11,Math.round(12-p/125)));}
+  function theftRewardV15(car:any){return Math.round((26000+workPowerV15(car)*65)/1000)*1000;}
+  function chipQuestProgressV15(){const w=ensureWorkV15();w.chipQuestProgress=Math.min(CHIP_QUEST_TARGET,w.chipQuestProgress+1);}
+  function clearActiveWorkV15(){const w=ensureWorkV15();w.activeType='';w.activeUntil=0;w.activeStartedAt=0;w.activeReward=0;w.activeCarId=0;}
+  function moneyAddV15(amount:number,reason:string){amount=Math.max(0,Math.round(amount));if(!amount)return;state.coins+=amount;state.stats.totalEarned+=amount;showToast(reason+' · +'+fmt(amount)+' SYND');haptic('success');}
+
+  function settleWorkV15(){
+    const w=ensureWorkV15(),now=Date.now();
+    if(!w.activeType||!w.activeUntil||now<w.activeUntil)return false;
+    const type=w.activeType,reward=Math.max(0,Number(w.activeReward)||0),car=carsDB.find((c:any)=>c.id===Number(w.activeCarId))||workCarV15();
+    clearActiveWorkV15();
+    if(type==='taxi'){
+      w.taxiJobs++;recordContractEvent('job',1);moneyAddV15(reward,'ТАКСИ · ЗАКАЗ ВЫПОЛНЕН');addXP(7);
+    }else if(type==='theft'){
+      w.theftJobs++;recordContractEvent('job',1);
+      const caught=Math.random()<Math.min(.42,.30+(Number(state.heat)||0)*.025);
+      if(caught){const fine=Math.min(state.coins,Math.max(12000,Math.round(reward*.35)));state.coins=Math.max(0,state.coins-fine);state.stats.finesPaid+=fine;state.stats.finesCount++;addHeat(1);showToast('ПЕРЕГОН · ДПС ПЕРЕХВАТИЛ · −'+fmt(fine)+' SYND');haptic('warning');}
+      else{moneyAddV15(reward,'ПЕРЕГОН · МАШИНА ДОСТАВЛЕНА');addXP(11);}
+    }else if(type==='delivery'){
+      addChipsV15(1,'parts_delivery');chipQuestProgressV15();w.deliveryReadyAt=Date.now()+DELIVERY_COOLDOWN_MS;showToast('ДЕТАЛИ ДОСТАВЛЕНЫ · +1 ЧИП');addXP(5);
+    }
+    updateHeader();saveState();checkAchievements();return true;
+  }
+
+  function startWorkV15(type:string){
+    const w=ensureWorkV15();settleWorkV15();if(w.activeType){showToast('Сначала закончи текущую подработку');return;}
+    const car=workCarV15();if(!car)return;
+    const now=Date.now();let seconds=6,reward=0;
+    if(type==='taxi'){seconds=taxiDurationV15(car);reward=taxiRewardV15(car);}
+    else if(type==='theft'){seconds=Math.max(6,taxiDurationV15(car)+2);reward=theftRewardV15(car);}
+    else if(type==='delivery'){
+      if(now<Number(w.deliveryReadyAt||0)){showToast('Доставка деталей снова будет доступна позже');return;}
+      seconds=8;reward=0;
+    }else return;
+    w.activeType=type;w.activeStartedAt=now;w.activeUntil=now+seconds*1000;w.activeReward=reward;w.activeCarId=car.id;
+    saveState();if(type==='delivery')renderChipCenterV15();else renderJobs();haptic('medium');
+  }
+
+  function buyTowTruckV15(){const w=ensureWorkV15();if(w.towTruckOwned)return;if(state.coins<TOW_TRUCK_PRICE){showToast('Не хватает '+fmt(TOW_TRUCK_PRICE-state.coins)+' SYND');return;}state.coins-=TOW_TRUCK_PRICE;state.stats.totalSpent+=TOW_TRUCK_PRICE;w.towTruckOwned=true;updateHeader();saveState();renderJobs();showToast('ЭВАКУАТОР КУПЛЕН');}
+  function startTowShiftV15(){const w=ensureWorkV15();if(!w.towTruckOwned){buyTowTruckV15();return;}if(w.towTruckUntil>Date.now()){showToast('Эвакуатор уже на смене');return;}const lvl=Math.max(1,Number(state.level)||1);w.towTruckStartedAt=Date.now();w.towTruckUntil=Date.now()+TOW_SHIFT_MS;w.towTruckReward=Math.round((115000+lvl*8500)/5000)*5000;saveState();renderJobs();showToast('Эвакуатор вышел на смену');}
+  function collectTowShiftV15(){const w=ensureWorkV15();if(!w.towTruckUntil)return;if(Date.now()<w.towTruckUntil){showToast('Смена ещё не закончена');return;}const reward=Math.max(50000,Number(w.towTruckReward)||115000);w.towTruckUntil=0;w.towTruckStartedAt=0;w.towTruckReward=0;recordContractEvent('job',1);moneyAddV15(reward,'ЭВАКУАТОР · СМЕНА ЗАКРЫТА');addXP(12);updateHeader();saveState();renderJobs();}
+  function claimChipQuestV15(){const w=ensureWorkV15();if(w.chipQuestClaimed||w.chipQuestProgress<CHIP_QUEST_TARGET)return;w.chipQuestClaimed=true;addChipsV15(2,'daily_work_contract');showToast('КОНТРАКТ СИНДИКАТА · +2 ЧИПА');saveState();renderChipCenterV15();}
+  function buyChipItemV15(item:string){
+    const car=workCarV15();if(!car)return;
+    const prices:any={nitro:2,service:2,heat:3,license:4};const cost=prices[item];if(!spendChipsV15(cost,'chip_shop_'+item))return;
+    if(item==='nitro')state.nitro=(Number(state.nitro)||0)+2;
+    if(item==='service'){state.fuel[car.id]=100;state.condition[car.id]=100;if(state.maintenance?.[car.id])state.maintenance[car.id]={oil:100,tires:100,engine:100};}
+    if(item==='heat')state.heat=Math.max(0,(Number(state.heat)||0)-1);
+    if(item==='license'){state.licenseSuspended=false;state.hasLicense=true;}
+    updateHeader();saveState();renderChipCenterV15();showToast('ПОКУПКА ЗА ЧИПЫ ВЫПОЛНЕНА');
+  }
+
+  function ensureChipCenterV15(){
+    const main=document.getElementById('main-scroll');if(!main)return null;let screen=document.getElementById('screen-chips');
+    if(!screen){screen=document.createElement('div');screen.id='screen-chips';screen.className='screen';screen.innerHTML='<div class="back-link" onclick="switchTab(\'more\')">← Меню</div><div class="section-title"><span>Чип-контракты</span></div><div id="chip-center-v15"></div>';main.appendChild(screen);}
+    return screen;
+  }
+  function renderChipCenterV15(){
+    settleWorkV15();ensureChipCenterV15();const root=document.getElementById('chip-center-v15');if(!root)return;const w=ensureWorkV15(),now=Date.now(),deliveryRemain=Math.max(0,Number(w.deliveryReadyAt||0)-now),active=w.activeType&&w.activeUntil>now;
+    root.innerHTML='<div class="chip-center-hero-v15"><span>ПРЕМИАЛЬНАЯ ЭКОНОМИКА</span><h2>'+fmt(state.chips)+' ◈ ЧИПОВ</h2><p>Чипы не участвуют в казино и обычной подработке. Их дают редкие контракты, боссы и специальные погони.</p></div>'+
+      '<article class="work-card-v15 chips"><div class="work-icon-v15">◈</div><div><h3>Доставка редких деталей</h3><p>Отдельный премиальный контракт. Выполни маршрут — получи Чип без ставки SYND.</p><div class="work-meta-v15"><span>Награда <b>+1 ЧИП</b></span><span>'+(deliveryRemain?'Кулдаун <b>'+Math.ceil(deliveryRemain/60000)+' мин.</b>':'Доступно <b>СЕЙЧАС</b>')+'</span></div></div><button '+(active||deliveryRemain?'disabled':'')+' onclick="startWorkV15(\'delivery\')">ДОСТАВИТЬ</button></article>'+
+      '<section class="chip-contract-v15"><div><span>ДНЕВНОЙ ЧИП-КОНТРАКТ</span><h3>Закрой '+CHIP_QUEST_TARGET+' редкие доставки</h3><p>Это отдельная премиальная цепочка и она не меняет выплату обычной подработки.</p></div><div class="chip-contract-progress-v15"><i style="width:'+Math.round(w.chipQuestProgress/CHIP_QUEST_TARGET*100)+'%"></i></div><b>'+w.chipQuestProgress+' / '+CHIP_QUEST_TARGET+'</b><button '+(w.chipQuestClaimed||w.chipQuestProgress<CHIP_QUEST_TARGET?'disabled':'')+' onclick="claimChipQuestV15()">'+(w.chipQuestClaimed?'ПОЛУЧЕНО':'ЗАБРАТЬ 2 ЧИПА')+'</button></section>'+
+      '<section class="chip-shop-v15"><div class="v8-section-head"><b>МАГАЗИН ЗА ЧИПЫ</b><span>'+fmt(state.chips)+' ◈</span></div><div class="chip-shop-grid-v15"><button onclick="buyChipItemV15(\'nitro\')"><b>2 ◈</b><span>+2 нитро</span></button><button onclick="buyChipItemV15(\'service\')"><b>2 ◈</b><span>Полное ТО</span></button><button onclick="buyChipItemV15(\'heat\')"><b>3 ◈</b><span>−1 розыск</span></button><button onclick="buyChipItemV15(\'license\')"><b>4 ◈</b><span>Вернуть права</span></button></div></section>';
+  }
+
+  renderJobs=function(){
+    settleWorkV15();updateHeader();const root=document.getElementById('jobs-list');if(!root)return;const w=ensureWorkV15(),car=workCarV15(),now=Date.now();
+    const active=w.activeType&&w.activeUntil>now;const total=Math.max(1,w.activeUntil-w.activeStartedAt),left=Math.max(0,w.activeUntil-now),progress=active?Math.max(0,Math.min(100,100-left/total*100)):0;
+    const activeLabel=w.activeType==='taxi'?'ТАКСИ':w.activeType==='theft'?'ПЕРЕГОН':w.activeType==='delivery'?'ПРЕМИАЛЬНЫЙ КОНТРАКТ':'';
+    const activeHtml=active?'<section class="work-active-v15"><div class="work-active-head"><span>'+activeLabel+'</span><b>'+Math.ceil(left/1000)+' СЕК.</b></div><div class="work-road-v15"><div class="work-route-v15"></div><div class="work-car-v15" style="left:calc('+progress+'% - 24px)"><img src="'+escapeHtml(carThumb(car))+'" alt=""></div></div><div class="work-progress-v15"><i style="width:'+progress+'%"></i></div><small>Маршрут выполняется в реальном времени. Можно уйти со страницы и вернуться позже.</small></section>':'';
+    const towRemaining=Math.max(0,w.towTruckUntil-now),towReady=w.towTruckUntil>0&&towRemaining<=0;
+    root.innerHTML=activeHtml+
+      '<div class="work-hero-v15"><span>РЕЗЕРВНЫЙ ЗАРАБОТОК · ТОЛЬКО SYND</span><h2>Подработка без вступительного взноса</h2><p>Если баланс просел — восстановись без ставок. Текущая машина: <b>'+escapeHtml(car.name)+'</b> · '+fmt(workPowerV15(car))+' л.с. Чем она сильнее, тем выгоднее такси и перегон.</p></div>'+
+      '<div class="work-grid-v15">'+
+      '<article class="work-card-v15 taxi"><div class="work-icon-v15">TAXI</div><div><h3>Работа в такси</h3><p>Анимированный маршрут на текущей машине. Мощность сокращает время заказа и увеличивает выплату.</p><div class="work-meta-v15"><span>Оплата <b>+'+fmt(taxiRewardV15(car))+' SYND</b></span><span>Маршрут <b>'+taxiDurationV15(car)+' сек.</b></span></div></div><button '+(active?'disabled':'')+' onclick="startWorkV15(\'taxi\')">ВЗЯТЬ ЗАКАЗ</button></article>'+
+      '<article class="work-card-v15 theft"><div class="work-icon-v15">RISK</div><div><h3>Автоугон / перегон</h3><p>Рискованный маршрут. ДПС может перехватить тебя: провал — штраф и розыск, успех — повышенная выплата.</p><div class="work-meta-v15"><span>Успех <b>+'+fmt(theftRewardV15(car))+' SYND</b></span><span>Риск ДПС <b>'+Math.round(Math.min(.42,.30+(Number(state.heat)||0)*.025)*100)+'%</b></span></div></div><button '+(active?'disabled':'')+' onclick="startWorkV15(\'theft\')">РИСКНУТЬ</button></article>'+
+      '<article class="work-card-v15 tow"><div class="work-icon-v15">TOW</div><div><h3>Эвакуатор</h3><p>Пассивный заработок: купи эвакуатор, отправь его на 15-минутную смену и забери Синдикат коины позже.</p><div class="work-meta-v15"><span>Статус <b>'+(w.towTruckOwned?(w.towTruckUntil?(towReady?'СМЕНА ГОТОВА':'НА СМЕНЕ'):'ГОТОВ'):'НЕ КУПЛЕН')+'</b></span><span>'+(w.towTruckUntil&&!towReady?'Осталось <b>'+Math.ceil(towRemaining/60000)+' мин.</b>':'Цена <b>'+fmt(TOW_TRUCK_PRICE)+' SYND</b>')+'</span></div></div>'+(w.towTruckOwned?(w.towTruckUntil?'<button '+(towReady?'':'disabled')+' onclick="collectTowShiftV15()">'+(towReady?'ЗАБРАТЬ +'+fmt(w.towTruckReward):'ИДЁТ СМЕНА')+'</button>':'<button onclick="startTowShiftV15()">ОТПРАВИТЬ НА СМЕНУ</button>'):'<button '+(state.coins<TOW_TRUCK_PRICE?'disabled':'')+' onclick="buyTowTruckV15()">КУПИТЬ ЭВАКУАТОР</button>')+'</article>'+
+      '</div><button class="chip-center-link-v15" onclick="switchTab(\'chips\')">ЧИП-КОНТРАКТЫ И ПРЕМИАЛЬНЫЙ МАГАЗИН →</button>';
+  };
+  doJob=function(jobId:any){startWorkV15(jobId==='theft'?'theft':'taxi');};
+
+  (window as any).startWorkV15=startWorkV15;(window as any).buyTowTruckV15=buyTowTruckV15;(window as any).startTowShiftV15=startTowShiftV15;(window as any).collectTowShiftV15=collectTowShiftV15;(window as any).claimChipQuestV15=claimChipQuestV15;(window as any).buyChipItemV15=buyChipItemV15;(window as any).renderJobs=renderJobs;(window as any).renderChipCenterV15=renderChipCenterV15;(window as any).doJob=doJob;
+
+  // Casino is back on Syndicate Coins. Chips stay premium and are never wagered.
+  const baseClampV15=clampBet;
+  clampBet=function(input:any,min:any){return baseClampV15(input,Math.max(1000,Number(min)||0));};
+  (window as any).clampBet=clampBet;
+  const casinoBase=renderCasinoHub;
+  renderCasinoHub=function(){casinoBase();const hero=document.querySelector('#screen-casino .casino-hero-premium p');if(hero)hero.textContent='Ставки только в Синдикат коинах. Чипы — премиальная валюта и здесь не используются.';};
+  (window as any).renderCasinoHub=renderCasinoHub;
+
+  // Horizontal modern dealership.
+  renderShop=function(){
+    updateHeader();renderShopToolbar();const root=document.getElementById('shop-list');if(!root)return;root.className='list-container showroom-horizontal-v15';
+    let list=carsDB.filter((c:any)=>shopCategory==='all'||c.cat===shopCategory);list=shopSort==='power'?list.slice().sort((a:any,b:any)=>b.power-a.power):list.slice().sort((a:any,b:any)=>a.price-b.price);
+    root.innerHTML=list.map((car:any)=>{const owned=state.ownedCars.includes(car.id),need=Math.max(0,car.price-state.coins);return '<article class="dealer-card-v15 '+(owned?'owned':'')+'"><div class="dealer-media-v15" onclick="openDetail('+car.id+')">'+carArtSVG(car)+'<span>'+escapeHtml(String(CAT_LABELS[car.cat]||car.tier||'AUTO'))+'</span></div><div class="dealer-copy-v15"><div><small>'+escapeHtml(String(car.tier||''))+'</small><h3>'+escapeHtml(car.name)+'</h3></div><div class="dealer-specs-v15"><span><small>МОЩНОСТЬ</small><b>'+fmt(car.power)+' л.с.</b></span><span><small>0–100</small><b>~'+Math.max(2.2,(9.8-car.power/190)).toFixed(1)+' c</b></span><span><small>КЛАСС</small><b>'+escapeHtml(String(CAT_LABELS[car.cat]||car.cat))+'</b></span></div><div class="dealer-price-v15">'+fmt(car.price)+' <small>SYND</small></div>'+(owned?'<button onclick="switchTab(\'garage\')">В ГАРАЖЕ · ОТКРЫТЬ</button>':'<button '+(need?'disabled':'')+' onclick="buyCar('+car.id+')">'+(need?'НЕ ХВАТАЕТ '+fmt(need):'КУПИТЬ')+'</button>')+'</div></article>';}).join('');
+  };
+  (window as any).renderShop=renderShop;
+
+  // Profile cleanup: career stays in profile, social/service clutter moves to independent menu.
+  function ensureMoreMenuV15(){
+    const main=document.getElementById('main-scroll');if(!main)return null;let screen=document.getElementById('screen-more');
+    if(!screen){screen=document.createElement('div');screen.id='screen-more';screen.className='screen';screen.innerHTML='<div class="back-link" onclick="switchTab(\'profile\')">← Профиль</div><div class="section-title"><span>Меню</span></div><div class="more-grid-v15" id="more-grid-v15"></div>';main.appendChild(screen);}return screen;
+  }
+  function moveProfileExtrasV15(){
+    ensureMoreMenuV15();const grid=document.querySelector('#screen-profile .hub-grid') as HTMLElement|null,more=document.getElementById('more-grid-v15');if(!grid||!more)return;
+    const keep=['Районы','Контракты','Подработка','Достижения','Награда дня'];
+    [...grid.querySelectorAll('.hub-card')].forEach((card:any)=>{const label=String(card.querySelector('.lbl')?.textContent||'');if(!keep.includes(label))more.appendChild(card);});
+    if(!document.getElementById('more-chips-v15')){const chip=document.createElement('div');chip.id='more-chips-v15';chip.className='hub-card';chip.setAttribute('onclick','switchTab(\'chips\')');chip.innerHTML='<div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2 20 7v10l-8 5-8-5V7z"/><path d="m8 12 4-6 4 6-4 6z"/></svg></div><div class="lbl">Чип-контракты</div><div class="sub">Редкая валюта и магазин</div>';more.appendChild(chip);}
+    let menu=document.getElementById('hub-more-v15');if(!menu){menu=document.createElement('div');menu.id='hub-more-v15';menu.className='hub-card hub-more-v15';menu.setAttribute('onclick','switchTab(\'more\')');menu.innerHTML='<div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/></svg></div><div class="lbl">Меню</div><div class="sub">Чаты, кланы, кейсы и сервисы</div>';grid.appendChild(menu);}
+  }
+  const profileBaseV15=renderProfile;
+  renderProfile=function(){profileBaseV15();moveProfileExtrasV15();};
+  (window as any).renderProfile=renderProfile;
+
+  // Wanted uses a dedicated SVG mark instead of another emoji/star-only status.
+  renderHeatStrip=function(id:any){const el=document.getElementById(id);if(!el)return;el.classList.add('heat-clickable-v14','wanted-v15');el.setAttribute('role','button');el.setAttribute('tabindex','0');el.setAttribute('onclick','openWantedInfoV14()');el.innerHTML='<div class="heat-head"><span class="wanted-title-v15"><svg class="wanted-icon-v15" viewBox="0 0 32 32" aria-hidden="true"><path d="M16 3 20 8l6 1-2 6 3 5-5 4-2 6-4-3-4 3-2-6-5-4 3-5-2-6 6-1 4-5Z"/><circle cx="16" cy="15" r="5"/><path d="M13 15h6M16 12v6"/></svg><span>РОЗЫСК · '+heatLabel()+'</span></span><b>'+state.heat+' / 5</b></div><div class="heat-bars">'+[1,2,3,4,5].map(i=>'<i class="'+(i<=state.heat?'on':'')+'"></i>').join('')+'</div><small class="heat-hint-v14">Нажми, чтобы посмотреть эффекты и способы снизить розыск</small>';};
+  (window as any).renderHeatStrip=renderHeatStrip;
+
+  // Remove fake unread notifications. Only real chat loading can change unread counters now.
+  state.unreadChat=0;updateHeader();saveState();
+
+  // Opponent variety is installed by the consistency guard below so list and race share one generated instance.
+
+  // Race visibility hardening: inject real vehicle images into cinematic cars and keep all lanes inside the road viewport.
+  const cockpitBaseV15=showRaceCockpit;
+  showRaceCockpit=function(){cockpitBaseV15();const c=raceCtx;if(!c)return;const me=workCarV15(),playerBody=document.querySelector('#cine-player .cine-car-body');if(playerBody)playerBody.innerHTML='<img class="cine-vehicle-img-v15" src="'+escapeHtml(carThumb(me))+'" alt="'+escapeHtml(me.name)+'">';const rivals=[...document.querySelectorAll('.cine-car[data-rival]')];rivals.forEach((el:any,i:number)=>{let rc:any;if(c.chase||c.isPolice)rc=carsDB.find((x:any)=>x.id===10)||carsDB[0];else if(c.chaosBots?.[i])rc=rivalCatalogCar(c.chaosBots[i]);else rc=rivalCatalogCar(c.opp);const body=el.querySelector('.cine-car-body');if(body&&rc)body.innerHTML='<img class="cine-vehicle-img-v15" src="'+escapeHtml(carThumb(rc))+'" alt="'+escapeHtml(rc.name)+'">';});};
+  (window as any).showRaceCockpit=showRaceCockpit;
+
+  // Cases: stale local opening flag must never strand the screen. Server-pending reconcile remains authoritative.
+  if(state.caseOpening){state.caseOpening=false;saveState();setTimeout(()=>{try{void (window as any).reconcileCaseRollsV15?.();renderCases();}catch(_){}},120);}
+
+  // Premium chips: boss wins are a rare source, not a casino bankroll.
+  const finishBaseV15=finishRace;
+  finishRace=function(playerWins:any,cArg:any){const c=cArg||raceCtx,bossWin=!!playerWins&&!!c?.opp?.boss&&!c?.chase&&!c?.isPolice;finishBaseV15(playerWins,cArg);if(bossWin){(window as any).addChipsV15?.(1,'boss_win');showToast('БОСС ПОВЕРЖЕН · +1 ЧИП');}};
+  (window as any).finishRace=finishRace;
+
+  // Refresh final surfaces after all overrides are installed.
+  ensureChipCenterV15();renderChipCenterV15();renderProfile();renderShop();if(document.getElementById('screen-jobs')?.classList.contains('active'))renderJobs();
+})();
+
+/* ==================== UPDATE 15 SAFETY / CONSISTENCY GUARDS ==================== */
+(() => {
+  const BOT_VISUAL_NAMES_V15_GLOBAL=['Шахист_77','StreetKing','Дядя Вася','TurboRacer','Smokie_Rider','NightFox','Black_ICE','Redline','GhostDriver','Механик_13','Kira','Rook','Vanta','Lynx','Nocturne'];
+  // Case opening watchdog: UI must recover in-place even if network/animation callbacks never return.
+  const openCaseBaseV15=openCase;
+  openCase=async function(caseId:any){
+    const started=Date.now();
+    const watchdog=setTimeout(()=>{
+      if(state.caseOpening){
+        state.caseOpening=false;saveState();
+        try{renderCases();}catch(_){}
+        try{void (window as any).reconcileCaseRollsV15?.();}catch(_){}
+        showToast('Кейс восстановлен без перезапуска. Проверь награду в истории.');
+      }
+    },12000);
+    try{return await openCaseBaseV15(caseId);}finally{
+      // Keep the watchdog alive while the visual reel is still animating; otherwise clear it.
+      if(!state.caseOpening||Date.now()-started>11000)clearTimeout(watchdog);
+    }
+  };
+  (window as any).openCase=openCase;
+
+  // Keep the opponent shown in the list consistent with the one entering the race.
+  const renderOppBaseV15b=renderOpponents;
+  renderOpponents=function(){
+    renderOppBaseV15b();
+    if(state.duelSub==='tour')return;
+    const usedNames=new Set<string>(),usedCars=new Set<number>();
+    document.querySelectorAll('#opponent-list .duel-card-v127').forEach((card:any,idx:number)=>{
+      const btn=card.querySelector('button[onclick*="prepareRace"]');if(!btn)return;
+      const m=String(btn.getAttribute('onclick')||'').match(/prepareRace\('([^']+)'/);if(!m)return;
+      const opp=opponentsDB.find((o:any)=>String(o.id)===String(m[1]));if(!opp)return;
+      let name=BOT_VISUAL_NAMES_V15_GLOBAL[(idx+Math.floor(Math.random()*BOT_VISUAL_NAMES_V15_GLOBAL.length))%BOT_VISUAL_NAMES_V15_GLOBAL.length];
+      let g=0;while(usedNames.has(name)&&g++<20)name=BOT_VISUAL_NAMES_V15_GLOBAL[Math.floor(Math.random()*BOT_VISUAL_NAMES_V15_GLOBAL.length)];usedNames.add(name);
+      const candidates=realCarCatalog().slice().sort((a:any,b:any)=>Math.abs(Number(a.power)-Number(opp.power))-Math.abs(Number(b.power)-Number(opp.power))).slice(0,6).filter((c:any)=>!usedCars.has(c.id));
+      const vc=(candidates.length?candidates:realCarCatalog())[Math.floor(Math.random()*Math.max(1,(candidates.length?candidates:realCarCatalog()).length))];
+      opp.v15DisplayName=name;if(vc){opp.v15VisualCarId=vc.id;usedCars.add(vc.id);}
+      const nameEl=card.querySelector('.duel-name-v127 b');if(nameEl)nameEl.textContent=name;
+      if(vc){const img=card.querySelector('.duel-car-v127 img');if(img){img.src=carThumb(vc);img.alt=vc.name;}const sub=card.querySelector('.duel-core-v127 > small');if(sub)sub.textContent=vc.name;}
+    });
+  };
+  (window as any).renderOpponents=renderOpponents;
+
+  const prepareBaseV15b=prepareRace;
+  prepareRace=function(target:any,mode:any){
+    const source=(mode==='tour'?tournamentsDB:opponentsDB).find((o:any)=>String(o.id)===String(target));
+    prepareBaseV15b(target,mode);
+    if(raceCtx&&source&&mode!=='tour'&&!raceCtx.chase&&!raceCtx.isPolice){
+      if(source.v15DisplayName)raceCtx.opp.name=source.v15DisplayName;
+      if(source.v15VisualCarId)raceCtx.opp.v15VisualCarId=source.v15VisualCarId;
+    }
+  };
+  (window as any).prepareRace=prepareRace;
+
+  const cockpitBaseV15b=showRaceCockpit;
+  showRaceCockpit=function(){
+    cockpitBaseV15b();const c=raceCtx;if(!c)return;
+    document.querySelectorAll('.cine-car[data-rival]').forEach((el:any,i:number)=>{
+      let rc:any=null;if(c.opp?.v15VisualCarId&&i===0)rc=carsDB.find((x:any)=>x.id===Number(c.opp.v15VisualCarId));
+      if(!rc&&c.chaosBots?.[i]?.v15VisualCarId)rc=carsDB.find((x:any)=>x.id===Number(c.chaosBots[i].v15VisualCarId));
+      if(!rc)return;const img=el.querySelector('.cine-vehicle-img-v15');if(img){img.src=carThumb(rc);img.alt=rc.name;}
+    });
+  };
+  (window as any).showRaceCockpit=showRaceCockpit;
 })();

@@ -20,7 +20,7 @@ const checks = [
   ['P2.10 open/invite clans', clanSchema.includes("z.literal('joinOpen')") && clanSchema.includes("z.literal('visibility')") && clanServer.includes(".eq('is_open', true)") && migration.includes('is_open boolean')],
   ['P3.11 independent race lanes', css.includes('.cine-car[data-rival="0"]') && css.includes('.cine-car[data-rival="1"]') && css.includes('.cine-car[data-rival="2"]')],
   ['P3.12 wanted profile info', runtime.includes('openWantedInfoV14') && runtime.includes('СНИЗИТЬ РОЗЫСК') && profileSchema.includes('wantedLevel') && migration.includes('wanted_level')],
-  ['Currency split', runtime.includes('Поставлено</span><b>\'+fmt(wagered)+\' CHIPS') && runtime.includes("job_'+job.id") && runtime.includes('ЧИПОВ')],
+  ['Currency split (v15 policy)', runtime.includes('state.coins-=bet; state.stats.casinoWagered+=bet') && runtime.includes('ПРЕМИАЛЬНАЯ ЭКОНОМИКА')],
   ['iOS safe area', css.includes('env(safe-area-inset-bottom)')],
 ];
 

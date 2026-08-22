@@ -76,7 +76,7 @@ export const GAME_SHELL = `
         <div class="gauge-label" style="text-align:left;margin-bottom:6px;">Создать вызов</div>
         <div class="pre-race-line"><span>Твоя мощность (текущая тачка)</span><b id="pvp-my-power">0 л.с.</b></div>
         <div class="btn-row" style="width:100%;gap:8px;margin-top:8px;">
-          <input class="chat-input" id="pvp-stake-input" type="number" placeholder="Ставка, " style="border-radius:10px;">
+          <input class="chat-input" id="pvp-stake-input" type="number" placeholder="Ставка, SYND" style="border-radius:10px;">
           <button class="sell-btn market" style="white-space:nowrap;" onclick="postPvpChallenge()">Бросить вызов</button>
         </div>
       </div>
@@ -105,7 +105,7 @@ export const GAME_SHELL = `
       <input class="chat-input" id="bank-amount" type="number" placeholder="Сумма, " style="border-radius:10px;margin-bottom:8px;width:100%;">
       <button class="big-btn" onclick="sendBankTransfer()">Отправить</button>
       <div class="chat-status" id="bank-send-status" style="margin-top:8px;"></div>
-      <div class="empty-note transfer-limit-note">До 800 SYND за перевод · дневной лимит 2 000 SYND</div>
+      <div class="empty-note transfer-limit-note">До 250 000 SYND за перевод · дневной лимит 750 000 SYND</div>
     </div>
     <div class="section-title"><span>История</span></div>
     <div class="list-container" id="bank-log"></div>
@@ -120,7 +120,7 @@ export const GAME_SHELL = `
 
   <!-- КАЗИНО ХАБ -->
   <div id="screen-casino" class="screen casino-screen-premium">
-    <div class="casino-hero-premium"><div><span>ЗАКРЫТЫЙ КЛУБ</span><h2>Казино синдиката</h2><p>Четыре игры. Один баланс. Ставки фиксируются до результата.</p></div><div class="casino-live-dot"><i></i>ОТКРЫТО</div></div>
+    <div class="casino-hero-premium"><div><span>ЗАКРЫТЫЙ КЛУБ</span><h2>Казино синдиката</h2><p>Четыре игры. Ставки только в Синдикат коинах — Чипы в казино не используются.</p></div><div class="casino-live-dot"><i></i>ОТКРЫТО</div></div>
     <div class="casino-session-stats" id="casino-session-stats"></div>
     <div class="list-container" id="casino-hub-list"></div>
   </div>
@@ -138,9 +138,9 @@ export const GAME_SHELL = `
     <div id="bj-message" style="width:100%;max-width:480px;text-align:center;font-weight:900;font-size:14px;min-height:20px;margin-bottom:8px;"></div>
     <div class="bet-panel" id="bj-bet-panel">
       <div class="bet-row">
-        <button class="chip-btn" onclick="bjAdjustBet(-50)">-50</button>
-        <input class="bet-input" id="bj-bet-input" type="number" value="100">
-        <button class="chip-btn" onclick="bjAdjustBet(50)">+50</button>
+        <button class="chip-btn" onclick="bjAdjustBet(-5000)">-50</button>
+        <input class="bet-input" id="bj-bet-input" type="number" value="5000">
+        <button class="chip-btn" onclick="bjAdjustBet(5000)">+50</button>
         <button class="chip-btn" onclick="bjMaxBet()">МАКС</button>
       </div>
       <button class="btn btn-select" style="margin-top:10px;" onclick="bjDeal()">РАЗДАТЬ</button>
@@ -157,9 +157,9 @@ export const GAME_SHELL = `
     <div class="rlt-outside" id="rlt-outside"></div>
     <div class="bet-panel">
       <div class="bet-row">
-        <button class="chip-btn" onclick="rltAdjustBet(-50)">-50</button>
-        <input class="bet-input" id="rlt-bet-input" type="number" value="100">
-        <button class="chip-btn" onclick="rltAdjustBet(50)">+50</button>
+        <button class="chip-btn" onclick="rltAdjustBet(-5000)">-50</button>
+        <input class="bet-input" id="rlt-bet-input" type="number" value="5000">
+        <button class="chip-btn" onclick="rltAdjustBet(5000)">+50</button>
         <button class="chip-btn" onclick="rltMaxBet()">МАКС</button>
       </div>
       <button class="btn btn-select" style="margin-top:10px;" onclick="rltSpin()">КРУТИТЬ</button>
@@ -180,9 +180,9 @@ export const GAME_SHELL = `
     </div>
     <div class="bet-panel">
       <div class="bet-row">
-        <button class="chip-btn" onclick="slotsAdjustBet(-25)">-25</button>
-        <input class="bet-input" id="slots-bet-input" type="number" value="50">
-        <button class="chip-btn" onclick="slotsAdjustBet(25)">+25</button>
+        <button class="chip-btn" onclick="slotsAdjustBet(-5000)">-25</button>
+        <input class="bet-input" id="slots-bet-input" type="number" value="5000">
+        <button class="chip-btn" onclick="slotsAdjustBet(5000)">+25</button>
         <button class="chip-btn" onclick="slotsMaxBet()">МАКС</button>
       </div>
       <button class="btn btn-select" style="margin-top:10px;" onclick="slotsSpin()">КРУТИТЬ</button>
@@ -196,14 +196,14 @@ export const GAME_SHELL = `
     <div class="game-table">
       <div class="dice-result-num" id="dice-result" style="color:var(--text-muted);">0</div>
       <div class="dice-readout"><span>Шанс: <b id="dice-chance">49%</b></span><span>Выплата: <b id="dice-mult">x2.00</b></span></div>
-      <input class="dice-slider" type="range" id="dice-slider" min="2" max="98" value="50" oninput="diceUpdate()">
+      <input class="dice-slider" type="range" id="dice-slider" min="2" max="98" value="5000" oninput="diceUpdate()">
       <div class="dice-readout"><span>Бросить меньше</span><span id="dice-target">50</span></div>
     </div>
     <div class="bet-panel">
       <div class="bet-row">
-        <button class="chip-btn" onclick="diceAdjustBet(-50)">-50</button>
-        <input class="bet-input" id="dice-bet-input" type="number" value="100">
-        <button class="chip-btn" onclick="diceAdjustBet(50)">+50</button>
+        <button class="chip-btn" onclick="diceAdjustBet(-5000)">-50</button>
+        <input class="bet-input" id="dice-bet-input" type="number" value="5000">
+        <button class="chip-btn" onclick="diceAdjustBet(5000)">+50</button>
         <button class="chip-btn" onclick="diceMaxBet()">МАКС</button>
       </div>
       <button class="btn btn-select" style="margin-top:10px;" onclick="diceRoll()">БРОСИТЬ</button>
