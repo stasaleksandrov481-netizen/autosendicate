@@ -185,6 +185,92 @@ export async function getOwnedCarsForTelegramUser(telegramId: number) {
   return cars ?? [];
 }
 
+/**
+ * Open ("Lobby") challenge — step 1: claim.
+ * Anyone in the group may tap "Принять вызов"; only the FIRST tap should win the race.
+ * We enforce that with a plain INSERT guarded by a partial unique index on
+ * (inline_message_id) where is_open=true (see upgrade-v17-open-challenge.sql):
+ * a duplicate insert for the same inline message throws a unique-violation
+ * (Postgres error code 23505), which we translate into 'already claimed'.
+ */
+export async function claimOpenChallenge(inlineMessageId: string, creatorTelegramId: number, creatorCarId: number, actor: TgUser) {
+  if (actor.is_bot) throw new Error('bot cannot duel');
+  if (actor.id === creatorTelegramId) throw new Error('cannot duel yourself');
+  const s = createServerSupabase();
+  const creatorId = playerIdFromTelegram(creatorTelegramId);
+  const actorId = playerIdFromTelegram(actor.id);
+
+  const { data: creator, error: creatorError } = await s.from('player_profiles').select('id,name,telegram_username,owned_cars,banned_at').eq('id', creatorId).maybeSingle();
+  if (creatorError) throw creatorError;
+  if (!creator || creator.banned_at) throw new Error('creator unavailable');
+  const creatorOwned = Array.isArray(creator.owned_cars) ? creator.owned_cars : [];
+  if (!creatorOwned.includes(creatorCarId)) throw new Error('creator car unavailable');
+  const { data: creatorCar, error: creatorCarError } = await s.from('game_cars_v11').select('id,name,image_path,power').eq('id', creatorCarId).eq('active', true).maybeSingle();
+  if (creatorCarError) throw creatorCarError;
+  if (!creatorCar) throw new Error('creator car unavailable');
+
+  const { data: actorProfile, error: actorError } = await s.from('player_profiles').select('id,name,telegram_username,owned_cars,banned_at').eq('id', actorId).maybeSingle();
+  if (actorError) throw actorError;
+  if (!actorProfile || actorProfile.banned_at) throw new Error('actor unavailable');
+  if (!Array.isArray(actorProfile.owned_cars) || !actorProfile.owned_cars.length) throw new Error('actor has no car');
+
+  const code = makeCode();
+  const { data: room, error } = await s.from('duel_rooms_v11').insert({
+    public_code: code,
+    is_open: true,
+    inline_message_id: inlineMessageId,
+    player_a_id: creatorId, player_b_id: actorId,
+    player_a_telegram_id: creatorTelegramId, player_b_telegram_id: actor.id,
+    player_a_name: creator.name || `@${creator.telegram_username || creatorTelegramId}`,
+    player_b_name: actorProfile.name || `@${actorProfile.telegram_username || actor.id}`,
+    player_a_car_id: creatorCarId,
+    status: 'pending',
+    expires_at: new Date(Date.now() + 15 * 60_000).toISOString()
+  }).select('*').single();
+  if (error) {
+    if (error.code === '23505') throw new Error('already claimed');
+    throw error;
+  }
+  return { room, creator, creatorCar, actorProfile };
+}
+
+/** Open challenge — step 2: the winner of the claim race picks their car. */
+export async function finalizeOpenChallenge(code: string, actorTelegramId: number, carId: number) {
+  const s = createServerSupabase();
+  const actorId = playerIdFromTelegram(actorTelegramId);
+  const { data: room, error } = await s.from('duel_rooms_v11').select('*').eq('public_code', code).maybeSingle();
+  if (error) throw error;
+  if (!room || room.player_b_id !== actorId) throw new Error('room not found');
+  if (room.status !== 'pending') throw new Error('already finalized');
+
+  const { data: actorProfile, error: actorError } = await s.from('player_profiles').select('owned_cars').eq('id', actorId).maybeSingle();
+  if (actorError) throw actorError;
+  if (!actorProfile || !Array.isArray(actorProfile.owned_cars) || !actorProfile.owned_cars.includes(carId)) throw new Error('car not owned');
+  const { data: car, error: carError } = await s.from('game_cars_v11').select('id,name,image_path,power').eq('id', carId).eq('active', true).maybeSingle();
+  if (carError) throw carError;
+  if (!car) throw new Error('car unavailable');
+
+  const { data: updated, error: updateError } = await s.from('duel_rooms_v11')
+    .update({ player_b_car_id: carId, status: 'accepted', accepted_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+    .eq('id', room.id).eq('status', 'pending').select('*').single();
+  if (updateError) throw updateError;
+
+  const { data: creatorCar } = await s.from('game_cars_v11').select('id,name,power').eq('id', room.player_a_car_id).maybeSingle();
+  return { room: updated, car, creatorCar };
+}
+
+/** Open challenge — the claimant backs out before picking a car; releases nothing (room stays claimed by them, but we mark it cancelled so it's never mistaken for a live challenge). */
+export async function cancelOpenChallenge(code: string, actorTelegramId: number) {
+  const s = createServerSupabase();
+  const actorId = playerIdFromTelegram(actorTelegramId);
+  const { data, error } = await s.from('duel_rooms_v11')
+    .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+    .eq('public_code', code).eq('player_b_id', actorId).eq('status', 'pending').select('*').maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error('room not found');
+  return data;
+}
+
 export async function createInlineDuelForAcceptor(actor: TgUser, creatorTelegramId: number, creatorCarId: number, opponentCarId: number, chatId?: number, messageId?: number, expectedUsername?: string) {
   if (actor.is_bot) throw new Error('bot cannot duel');
   if (expectedUsername && String(actor.username || '').toLowerCase() !== expectedUsername.toLowerCase()) throw new Error('challenge addressed to another player');

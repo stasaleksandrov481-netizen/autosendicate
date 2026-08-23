@@ -1509,13 +1509,17 @@ function chooseLaunch(mode){
   const error=Math.abs(pos-center);
   const quality=Math.max(0,1-error/.30);
   if(quality>=.90){state.raceStats.perfectStarts=(state.raceStats.perfectStarts||0)+1;haptic('success');}
+  /* v16-fix: chase/ДПС modes set a distance head-start (c.distance=80) before the launch
+     minigame runs. The launch result must ADD to that head-start, not overwrite it —
+     otherwise the ДПС patrol effectively spawns almost level with the player. */
+  const headStart=(c.chase||c.isPolice)?(Number(c.distance)||0):0;
   if(mode==='spin'){
     state.raceStats.hardLaunches=(state.raceStats.hardLaunches||0)+1;
-    c.rpm=4700+quality*900;c.speed=10+quality*8;c.distance=1.2+quality*1.2;
+    c.rpm=4700+quality*900;c.speed=10+quality*8;c.distance=headStart+1.2+quality*1.2;
     c.launchGrip=Math.max(.76,c.profile.launchGrip-(1-quality)*.12);
   }else{
     state.raceStats.safeLaunches=(state.raceStats.safeLaunches||0)+1;
-    c.rpm=2600+quality*1900;c.speed=7+quality*8;c.distance=.8+quality*1.4;
+    c.rpm=2600+quality*1900;c.speed=7+quality*8;c.distance=headStart+.8+quality*1.4;
     c.launchGrip=.98;
   }
   /* AI старт не идеальный по умолчанию. Его шанс зависит от силы машины. */
@@ -3830,8 +3834,30 @@ if (typeof window !== 'undefined') {
     const onlineLabel=document.getElementById('duel-online-label');if(onlineLabel)onlineLabel.textContent=pool.length+' соперников';
     if(!visible.length){root.innerHTML='<div class="empty-note">Подходящие соперники появятся после следующего обновления сетки.</div>';return;}
     root.innerHTML=visible.map((opp:any,idx:number)=>{
-      const m=rivalMetaV11(opp),rivalCar=rivalCatalogCar(opp),delta=(Number(opp.power)-myPower)/Math.max(myPower,1),winChance=Math.max(4,Math.min(96,Math.round(50-delta*82))),fee=entryFeeFor(opp),recent=history.includes(String(opp.id));
-      const r=state.tournamentRuns[String(opp.id)]||{},day=new Date().toISOString().slice(0,10),count=state.duelSub==='tour'&&r.day===day?(Number(r.count)||0):0,mult=state.duelSub==='tour'?([1,.72,.48][Math.min(2,count)]||.48):1,reward=Math.round(Number(opp.reward||0)*mult);
+      const m=rivalMetaV11(opp),rivalCar=rivalCatalogCar(opp),delta=(Number(opp.power)-myPower)/Math.max(myPower,1),winChance=Math.max(4,Math.min(96,Math.round(50-delta*82))),recent=history.includes(String(opp.id));
+      const r=state.tournamentRuns[String(opp.id)]||{},day=new Date().toISOString().slice(0,10),count=state.duelSub==='tour'&&r.day===day?(Number(r.count)||0):0,mult=state.duelSub==='tour'?([1,.72,.48][Math.min(2,count)]||.48):1;
+      /* v16-fix: экономика перекошена — цены на тюнинг/машины выросли до сотен
+         миллионов (ECONOMY_V12_6.carPrices), а призы за обычные и «риск»-заезды
+         остались статичными из ранней таблицы opponentsDB (максимум ~34к даже
+         за самого сильного босса) и вообще не учитывали риск гонки.
+         Теперь приз — это max(табличного приза, честной формулы от мощности
+         соперника) с явной риск-надбавкой: чем сильнее соперник относительно
+         твоей эффективной мощности, тем больше премия. За «РИСК»/«ПРЕДЕЛ» и
+         боссов доплата особенно ощутима. Значение фиксируется в opp.reward,
+         чтобы выплата в finishRace всегда совпадала с тем, что показано здесь,
+         а вход (fee) считается уже от актуального приза — без рассинхрона
+         между первым и повторным рендером списка. */
+      let reward;
+      if(state.duelSub==='tour'){
+        reward=Math.round(Number(opp.reward||0)*mult);
+      }else{
+        const riskDelta=Math.max(0,delta);
+        const riskMult=1+Math.min(1.8,riskDelta*2.1)+(opp.boss?0.35:0);
+        const fairReward=Math.round(Math.max(Number(opp.reward||0),economyRaceReward(opp))*riskMult);
+        opp.reward=fairReward;
+        reward=fairReward;
+      }
+      const fee=entryFeeFor(opp);
       const cls=opp.boss?'boss extreme':delta>.28?'extreme':delta>.08?'risk':delta<-.15?'easy':'even',label=opp.boss?'БОСС':delta>.28?'ПРЕДЕЛ':delta>.08?'РИСК':delta<-.15?'ПРЕИМУЩЕСТВО':'РАВНО';
       const bossLocked=!!opp.boss && state.level<Number(opp.unlockLevel||1);
       return '<article class="duel-card-v127 '+cls+'" style="animation-delay:'+Math.min(idx*22,100)+'ms"><div class="duel-car-v127"><img src="'+escapeHtml(carThumb(rivalCar))+'" alt=""><span>'+escapeHtml(m.avatar)+'</span></div><div class="duel-core-v127"><div class="duel-name-v127"><b>'+escapeHtml(opp.name)+'</b><i>'+label+'</i></div><small>'+escapeHtml(rivalCar?.name||m.car)+'</small><div class="duel-stats-v127"><span>'+fmt(opp.power)+' л.с.</span><span>Рейтинг '+m.rating+'</span><span>'+winChance+'%</span></div><div class="duel-bar-v127"><i style="width:'+winChance+'%"></i></div></div><div class="duel-go-v127"><div><span>Вход <b>'+fmt(fee)+'</b></span><span>Приз <b>'+fmt(reward)+'</b></span></div><button '+(bossLocked?'disabled':'')+' onclick="prepareRace(\''+String(opp.id).replace(/'/g,"\\'")+'\',\''+(state.duelSub==='tour'?'tour':'normal')+'\')">'+(bossLocked?'LVL '+Number(opp.unlockLevel||1):'НА ЛИНИЮ')+'</button>'+(recent?'<small>Недавний заезд</small>':'')+'</div></article>';
@@ -4546,7 +4572,16 @@ if (typeof window !== 'undefined') {
     if(state.heat>=5&&!c.chase&&Math.random()<.45){c.blockade=true;c.opp.reward=Math.max(1,Math.round(Number(c.opp.reward||0)*.5));showToast('ОБЛАВА · полиция блокировала трассу · приз ×0.5');renderRaceBrief();}
   };
   const priorStartChaseV14=(window as any).startSpecialChase;
-  (window as any).startSpecialChase=function(){syncWantedDecayV14();if(Number(state.arrestUntil)>Date.now()){showToast('Ты под временным арестом');return;}addHeat(1);priorStartChaseV14();const c=raceCtx;if(c){c.trackLength=1500;c.distance=80;c.aiDistance=0;c.chase=true;c.isPolice=true;c.chasePrevGap=80;renderRaceBrief();}};
+  /* v16-fix: убрали лишний повторный renderRaceBrief() — он тут был не нужен
+     (экран уже отрисован внутри priorStartChaseV14 -> prepareRace) и только
+     создавал риск гонки состояний при быстром повторном тапе по кнопке. */
+  (window as any).startSpecialChase=function(){
+    syncWantedDecayV14();
+    if(Number(state.arrestUntil)>Date.now()){showToast('Ты под временным арестом');return;}
+    addHeat(1);priorStartChaseV14();
+    const c=raceCtx;
+    if(c){c.trackLength=1500;c.distance=80;c.aiDistance=0;c.chase=true;c.isPolice=true;c.chasePrevGap=80;}
+  };
 
   // Wanted 4: one hidden undercover opponent can replace a duel.
   const priorOppV14=renderOpponents;
@@ -4852,7 +4887,11 @@ if (typeof window !== 'undefined') {
     if(!root||root.dataset.v16DragBound==='1')return;
     root.dataset.v16DragBound='1';
     root.classList.add('garage-drag-v16');
-    root.style.touchAction='pan-y pinch-zoom';
+    /* v16-fix: touch-action:pan-y only — letting the browser also claim pan-x
+       here fought with this pointer-drag handler on every swipe and caused
+       the reported micro-stutter. Horizontal motion is 100% JS + scroll-snap. */
+    root.style.touchAction='pan-y';
+    root.style.scrollSnapType='x mandatory';
     let pointerId=-1,startX=0,startY=0,startScroll=0,dragging=false,decided=false;
     const clear=(snap=true)=>{
       if(pointerId>=0&&root.hasPointerCapture?.(pointerId)){try{root.releasePointerCapture(pointerId);}catch{}}
@@ -4915,8 +4954,52 @@ if (typeof window !== 'undefined') {
     map.classList.toggle('chase-v16',!!(c.chase||c.isPolice));
   }
 
+  /* v16-fix: критический баг ДПС — «ГАЗ» не реагировал на нажатия на старте.
+     Пелали #gas-btn/#brake-btn вызывают глобальную window.raceHold(...) из инлайн
+     onpointerdown, но это единственная точка склейки. Если она когда-либо не
+     совпадает с актуальной физикой (или трек-таймер стартового светофора не
+     успевает снять startLocked из-за конкурентного повторного рендера брифинга
+     в режиме ДПС), педаль газа выглядит «мёртвой», а машина стоит на месте.
+     Чиним двумя слоями защиты:
+       1) На каждый показ кокпита переустанавливаем window.raceHold/window.manualShift
+          на актуальные функции и вешаем НАСТОЯЩИЕ addEventListener-обработчики на
+          сами кнопки — teper клик работает даже если инлайн-атрибут когда-то
+          зацепился за протухшую ссылку.
+       2) Сторожевой таймер: если через 2.5с после показа кокпита startLocked всё
+          ещё true (светофор не снял блокировку), снимаем её принудительно —
+          гонка не должна «зависать» намертво из-за пропущенного таймера. */
+  function rebindRaceControlsV16(){
+    (window as any).raceHold=raceHold;
+    (window as any).manualShift=manualShift;
+    (window as any).useRaceNitro=(window as any).useRaceNitro||useRaceNitro;
+    const gas=document.getElementById('gas-btn'),brake=document.getElementById('brake-btn');
+    const bind=(el:HTMLElement|null,type:'gas'|'brake')=>{
+      if(!el||el.dataset.raceHoldBoundV16==='1')return;
+      el.dataset.raceHoldBoundV16='1';
+      const down=(e:Event)=>{e.preventDefault();raceHold(type,true);};
+      const up=()=>raceHold(type,false);
+      el.addEventListener('pointerdown',down,{passive:false});
+      el.addEventListener('pointerup',up,{passive:true});
+      el.addEventListener('pointercancel',up,{passive:true});
+      el.addEventListener('pointerleave',up,{passive:true});
+    };
+    bind(gas,'gas');bind(brake,'brake');
+  }
   const cockpitBaseV16=showRaceCockpit;
-  showRaceCockpit=function(){cockpitBaseV16();decorateRaceV16();};
+  showRaceCockpit=function(){
+    cockpitBaseV16();decorateRaceV16();rebindRaceControlsV16();
+    const c=raceCtx;
+    if(c){
+      const startedAt=c.elapsed||0;
+      setTimeout(()=>{
+        if(raceCtx===c && !c.finished && c.startLocked){
+          c.startLocked=false;c.startTimer=0;
+          const light=document.getElementById('race-start-light');if(light)light.classList.remove('show');
+          showAction('СТАРТ РАЗБЛОКИРОВАН');
+        }
+      },2500);
+    }
+  };
   (window as any).showRaceCockpit=showRaceCockpit;
 
   function applyPrivateRemoteProgressV16(c:any,map:HTMLElement,len:number){
