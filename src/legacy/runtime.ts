@@ -201,10 +201,21 @@ function importSave(evt){
   reader.onload=e=>{try{state=normalizeState(JSON.parse(String(e.target.result||'')));saveState();applyUiSettings();showToast('Прогресс восстановлен');switchTab('profile');}catch(_){showToast(' Неверный файл сохранения');}finally{evt.target.value='';}};
   reader.readAsText(file);
 }
-function resetProgress(){
+async function resetProgress(){
   if(!confirm('Точно сбросить весь прогресс? Это действие необратимо.'))return;
   if(!confirm('Последнее предупреждение: машины, деньги и достижения будут удалены. Продолжить?'))return;
-  localStorage.removeItem(SAVE_KEY);LEGACY_SAVE_KEYS.forEach(k=>localStorage.removeItem(k));state=defaultState();applyUiSettings();showToast('Новая карьера начата');switchTab('garage');
+  localStorage.removeItem(SAVE_KEY);LEGACY_SAVE_KEYS.forEach(k=>localStorage.removeItem(k));state=defaultState();applyUiSettings();
+  /* v17-fix: раньше сброс был чисто локальным — в БД оставался старый гараж/баланс,
+     и при следующей синхронизации (checkServerSync/syncPlayerProfile) свежий локальный
+     стейт распознавался как «пустой профиль» и молча ЗАМЕНЯЛСЯ старыми серверными
+     данными — то есть сброс на деле откатывал прогресс назад, а не удалял его.
+     Теперь сразу после локального сброса пушим пустой профиль на сервер и ждём
+     подтверждения, прежде чем считать сброс завершённым. */
+  showToast('Сбрасываем прогресс на сервере…');
+  try{
+    if(typeof syncPlayerProfile==='function') await syncPlayerProfile(true);
+  }catch(e){console.warn('reset: server sync failed',e);}
+  showToast('Новая карьера начата');switchTab('garage');
 }
 function applyUiSettings(){
   document.body.classList.toggle('reduce-motion',!!state.settings.reducedMotion);
@@ -2040,9 +2051,27 @@ async function syncPlayerProfile(force=false){
   if(!force&&Date.now()-lastProfileSyncAt<20000)return true;
   profileSyncInFlight=(async()=>{try{
     const car=typeof carsDB!=='undefined'?carsDB.find(c=>c.id===state.activeCarId):null;
+    /* v17-fix: раньше сюда уходили только «презентационные» поля — owned_cars/баланс/
+       статистика в БД годами не обновлялись после первого входа. Инлайн-бот и рейтинг
+       читают именно БД, поэтому у друзей там залипали давно проданные машины, а
+       «сброс прогресса» подтягивал эти протухшие данные обратно вместо сброса.
+       Теперь клиент (авторитетный источник истины) при каждом синке присылает
+       актуальный гараж и экономику, и сервер их сохраняет. */
     const response=await serverFetch('/api/profile/sync',{
       method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({displayName:safeText(state.playerName,'Гонщик',48),photoUrl:state.playerPhoto||null,currentCarName:car?.name||null,activeCarId:Number(state.activeCarId)||1,activePlate:(typeof activePlate==='function'?activePlate(Number(state.activeCarId)||1):null),wantedLevel:Math.max(0,Math.min(5,Number(state.heat)||0))})
+      body:JSON.stringify({
+        displayName:safeText(state.playerName,'Гонщик',48),photoUrl:state.playerPhoto||null,currentCarName:car?.name||null,
+        activeCarId:Number(state.activeCarId)||1,activePlate:(typeof activePlate==='function'?activePlate(Number(state.activeCarId)||1):null),
+        wantedLevel:Math.max(0,Math.min(5,Number(state.heat)||0)),
+        ownedCars:Array.isArray(state.ownedCars)?state.ownedCars.slice(0,100):[],
+        balance:Math.max(0,Math.round(Number(state.coins)||0)),
+        xp:Math.max(0,Math.round(Number(state.xp)||0)),
+        level:Math.max(1,Math.round(Number(state.level)||1)),
+        races:Math.max(0,Math.round(Number(state.stats?.races)||0)),
+        wins:Math.max(0,Math.round(Number(state.stats?.wins)||0)),
+        losses:Math.max(0,Math.round(Number(state.stats?.losses)||0)),
+        totalEarned:Math.max(0,Math.round(Number(state.stats?.totalEarned)||0))
+      })
     });
     if(!response.ok)return false;
     lastProfileSyncAt=Date.now();return true;
@@ -2565,7 +2594,7 @@ async function claimPvpResults(){
   buyCar=function(carId){
     if(escrowCarIds().has(Number(carId))){showToast('Эта модель сейчас находится в рыночном лоте');return;}
     const before=state.ownedCars.includes(carId);baseBuyCar(carId);
-    if(!before&&state.ownedCars.includes(carId)){state.tuningHistory[carId]=state.tuningHistory[carId]||[];saveState();}
+    if(!before&&state.ownedCars.includes(carId)){state.tuningHistory[carId]=state.tuningHistory[carId]||[];saveState();if(typeof syncPlayerProfile==='function')void syncPlayerProfile(true);}
   };
   const baseUpgradeTune=upgradeTune;
   upgradeTune=function(carId,key){
@@ -2831,7 +2860,7 @@ async function claimPvpResults(){
   buyListing=async function(id){
     if(!await requireOnlineWrite('Рынок'))return;try{const rr=await serverFetch('/api/market?id='+encodeURIComponent(String(id)),{credentials:'include',cache:'no-store'}),pp=await rr.json().catch(()=>null),data=pp?.data;if(!rr.ok||!data||data.status!=='active'){showToast('Лот уже недоступен');refreshMarket();return;}if(data.seller_id===state.playerId)return;const snap=marketVehicleFromRow(data),carId=Number(snap.carId||data.car_id);if(state.ownedCars.includes(carId)||escrowCarIds().has(carId)){showToast('Такая модель уже есть в гараже или находится в вашем лоте');return;}if(state.coins<data.price){showToast('Недостаточно SYND');return;}const sold=await marketApiV10({action:'buy',listingId:Number(id)});if(!sold?.id)throw new Error('listing was not sold');state.coins-=data.price;state.stats.totalSpent+=data.price;applyVehicleSnapshot(snap);showToast('Куплено: машина, тюнинг и установленный номер');updateHeader();saveState();refreshMarket();}catch(e){console.warn(e);showToast('Не удалось купить лот');}
   };
-  sellToState=function(carId){if(!state.ownedCars.includes(carId)||state.ownedCars.length<=1)return;const car=carsDB.find(c=>c.id===carId),price=stateSellPrice(car);if(!confirm('Продать '+car.name+' государству за '+fmt(price)+' SYND? Установленный тюнинг и номер уйдут вместе с машиной.'))return;state.coins+=price;state.stats.totalEarned+=price;state.ownedCars=state.ownedCars.filter(id=>id!==carId);if(state.activeCarId===carId)state.activeCarId=state.ownedCars[0];const uid=state.installedPlates[String(carId)];if(uid)state.plateInventory=state.plateInventory.filter(p=>p.uid!==uid);delete state.installedPlates[String(carId)];delete state.upgrades[carId];delete state.fuel[carId];delete state.condition[carId];delete state.tuningHistory[carId];showToast('Машина продана вместе со сборкой');updateHeader();saveState();renderSellPicker();};
+  sellToState=function(carId){if(!state.ownedCars.includes(carId)||state.ownedCars.length<=1)return;const car=carsDB.find(c=>c.id===carId),price=stateSellPrice(car);if(!confirm('Продать '+car.name+' государству за '+fmt(price)+' SYND? Установленный тюнинг и номер уйдут вместе с машиной.'))return;state.coins+=price;state.stats.totalEarned+=price;state.ownedCars=state.ownedCars.filter(id=>id!==carId);if(state.activeCarId===carId)state.activeCarId=state.ownedCars[0];const uid=state.installedPlates[String(carId)];if(uid)state.plateInventory=state.plateInventory.filter(p=>p.uid!==uid);delete state.installedPlates[String(carId)];delete state.upgrades[carId];delete state.fuel[carId];delete state.condition[carId];delete state.tuningHistory[carId];showToast('Машина продана вместе со сборкой');updateHeader();saveState();renderSellPicker();/* v17-fix: сразу пушим актуальный гараж в БД, а не ждём следующего заезда/интервала — иначе проданная машина ещё долго «живёт» в базе (инлайн-бот, рейтинг). */if(typeof syncPlayerProfile==='function')void syncPlayerProfile(true);};
 
   async function reconcileMarketEscrow(){
     if(!onlineAuthReady||!state.playerId)return;
