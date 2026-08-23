@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 246 136" role="img" aria-label="aventador vector base">
+  <g id="base-body" fill="none" stroke="#111827" stroke-width="2" stroke-linejoin="round">
+    <polygon id="body" points="4,106 20,82 48,76 91,49 151,45 191,67 224,76 244,92 238,114 4,114" fill="#d1d5db"/>
+    <polygon id="windows" points="96,55 146,51 181,69 64,74" fill="#64748b"/>
+    <circle id="front-wheel-guide" cx="59" cy="109" r="19"/>
+    <circle id="rear-wheel-guide" cx="202" cy="109" r="19"/>
+  </g>
+</svg>
