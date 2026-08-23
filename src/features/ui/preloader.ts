@@ -1,6 +1,6 @@
 export function startPreloader() {
-  // Only critical early-garage art is preloaded. The remaining WebP cars stay native-lazy.
-  const assets = [1,2,3,4,5].map((id)=>`/assets/cars/${id}.webp`);
+  // V17 car art is procedural SVG/Pixi; there are no raster car photos to preload.
+  const assets:string[] = [];
   const tips = [
     'Идеальное переключение сохраняет тягу и сокращает разрыв.',
     'Настраивай КПП под дистанцию, а не только под максимальную скорость.',

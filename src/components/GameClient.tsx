@@ -5,6 +5,7 @@ import { GAME_SHELL } from '@/legacy/game-shell';
 import { startPreloader } from '@/features/ui/preloader';
 import { bootstrapSecureSession } from '@/features/auth/client';
 import { DuelRoomClient } from '@/components/duels/DuelRoomClient';
+import { TuningAtelierBridge } from '@/components/tuning/TuningAtelierBridge';
 
 declare global {
   interface Window {
@@ -56,6 +57,7 @@ export function GameClient() {
   return <>
     <div id="game-root" suppressHydrationWarning dangerouslySetInnerHTML={{ __html: GAME_SHELL }} />
     {duelCode && <DuelRoomClient code={duelCode} onClose={() => setDuelCode(null)} />}
+    <TuningAtelierBridge />
     {blocked && <div className="account-blocked"><div><span>ДОСТУП ОГРАНИЧЕН</span><b>Участие в AutoSyndicate приостановлено</b><p>Если вы считаете это ошибкой, обратитесь в поддержку проекта.</p></div></div>}
   </>;
 }

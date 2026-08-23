@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 246 136" role="img" aria-label="ferrari_488 vector base">
+  <g id="base-body" fill="none" stroke="#111827" stroke-width="2" stroke-linejoin="round">
+    <polygon id="body" points="5,105 19,81 49,75 83,44 143,40 181,65 220,75 238,91 233,113 5,113" fill="#d1d5db"/>
+    <polygon id="windows" points="88,53 138,49 171,70 61,73" fill="#64748b"/>
+    <circle id="front-wheel-guide" cx="59" cy="108" r="18"/>
+    <circle id="rear-wheel-guide" cx="199" cy="108" r="18"/>
+  </g>
+</svg>

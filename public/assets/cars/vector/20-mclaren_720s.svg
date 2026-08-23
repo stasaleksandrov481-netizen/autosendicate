@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 246 136" role="img" aria-label="mclaren_720s vector base">
+  <g id="base-body" fill="none" stroke="#111827" stroke-width="2" stroke-linejoin="round">
+    <polygon id="body" points="5,105 19,81 49,75 83,48 143,44 181,69 220,75 237,91 232,113 5,113" fill="#d1d5db"/>
+    <polygon id="windows" points="88,50 138,46 171,67 61,73" fill="#64748b"/>
+    <circle id="front-wheel-guide" cx="63" cy="108" r="18"/>
+    <circle id="rear-wheel-guide" cx="197" cy="108" r="18"/>
+  </g>
+</svg>

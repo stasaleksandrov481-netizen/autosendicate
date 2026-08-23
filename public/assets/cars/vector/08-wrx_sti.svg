@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 246 136" role="img" aria-label="wrx_sti vector base">
+  <g id="base-body" fill="none" stroke="#111827" stroke-width="2" stroke-linejoin="round">
+    <polygon id="body" points="10,102 18,79 52,72 72,42 132,42 155,72 207,76 231,91 227,111 10,111" fill="#d1d5db"/>
+    <polygon id="windows" points="76,49 126,49 145,74 61,72" fill="#64748b"/>
+    <circle id="front-wheel-guide" cx="60" cy="106" r="17"/>
+    <circle id="rear-wheel-guide" cx="182" cy="106" r="17"/>
+  </g>
+</svg>

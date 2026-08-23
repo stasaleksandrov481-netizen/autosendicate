@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { CarVisual } from '@/components/car/CarVisual';
+import { normalizeCarVisualConfig } from '@/features/car-visual/catalog';
 
 interface DuelRoom {
   public_code: string;
@@ -43,6 +45,7 @@ interface DuelProfile {
   level: number;
   rating: number;
   current_car_name?: string | null;
+  car_visuals?: Record<string, unknown> | null;
 }
 
 interface DuelCar {
@@ -164,7 +167,7 @@ export function DuelRoomClient({ code, onClose }: { code: string; onClose: () =>
             <div className="duel-room-label">Ваша машина</div>
             <div className="duel-car-picker">
               {data.cars.map((car) => <button key={car.id} disabled={busy || Boolean(myReady) || data.room.status === 'racing'} className={myCarId === car.id ? 'selected' : ''} onClick={() => void act({action:'selectCar',carId:car.id})}>
-                <div className="duel-car-image">{car.image_path ? <img src={car.image_path} alt="" /> : <span>{car.name.slice(0,2)}</span>}</div>
+                <div className="duel-car-image"><CarVisual size="sm" config={normalizeCarVisualConfig(me?.car_visuals?.[String(car.id)], car.id)} label={car.name} /></div>
                 <div><b>{car.name}</b><small>{car.tier} · {car.power} л.с.</small></div>
               </button>)}
             </div>
@@ -173,6 +176,7 @@ export function DuelRoomClient({ code, onClose }: { code: string; onClose: () =>
           <section className="duel-opponent-lock">
             <div className="duel-room-label">Выбор соперника</div>
             <div className="duel-locked-car">
+              {otherCarId && <CarVisual size="md" config={normalizeCarVisualConfig(other?.car_visuals?.[String(otherCarId)], otherCarId)} label={otherCar?.name || 'Машина соперника'} />}
               <div className="duel-lock-icon">{otherReady ? 'ГОТОВ' : otherCarId ? 'ВЫБРАНО' : 'ЖДЁМ'}</div>
               <b>{otherCar?.name || (otherCarId ? `CAR #${otherCarId}` : 'Машина не выбрана')}</b>
               <small>{otherCar ? `${otherCar.power} л.с. · ${otherCar.tier}` : 'Обновится автоматически'}</small>

@@ -1,6 +1,6 @@
 {
   "name": "autosyndicate-carbon",
-  "version": "16.0.0",
+  "version": "17.0.0",
   "private": true,
   "engines": {
     "node": ">=20.9.0"
@@ -22,7 +22,8 @@
     "check:v14": "node scripts/verify-fixpack-v14.mjs",
     "check:v15": "node scripts/verify-update-v15.mjs",
     "check:v15.1": "node scripts/verify-v15-1-menu-garage.mjs",
-    "check:v16": "node scripts/verify-v16.mjs"
+    "check:v16": "node scripts/verify-v16.mjs",
+    "check:v17": "node scripts/verify-v17-pixi.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.3",
@@ -30,7 +31,8 @@
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "zod": "^4.1.5",
-    "server-only": "^0.0.1"
+    "server-only": "^0.0.1",
+    "pixi.js": "8.20.0"
   },
   "devDependencies": {
     "@types/node": "^22.18.0",

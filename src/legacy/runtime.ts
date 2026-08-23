@@ -1,6 +1,8 @@
 // @ts-nocheck
 import { createBrowserSupabase } from '@/lib/supabase/client';
 import { normalizeTags, tagsRowHTML } from '@/features/tags/shared';
+import { defaultCarVisualConfig, normalizeCarVisualConfig } from '@/features/car-visual/catalog';
+import { carVisualDataUri, carVisualSvgMarkup } from '@/features/car-visual/svg';
 
 /* ===== migrated from state.js ===== */
 /* ==================== STATE / STORAGE 5.0 ==================== */
@@ -14,7 +16,7 @@ function playerSaveKey(){const id=authenticatedPlayerId();return id?`${SAVE_KEY_
 function playerBackupKeys(){const base=playerSaveKey();return [`${base}:b1`,`${base}:b2`,`${base}:b3`];}
 let SAVE_KEY = playerSaveKey();
 let LEGACY_SAVE_KEYS = [...GLOBAL_LEGACY_SAVE_KEYS];
-const MAX_SAVE_BYTES = 256 * 1024;
+const MAX_SAVE_BYTES = 1024 * 1024;
 let state = defaultState();
 let telegramInitData = '';
 
@@ -23,7 +25,7 @@ function defaultState(){
     playerName: 'Гонщик', playerPhoto:null, playerId:null, profileTags:[],
     coins:1500, xp:0, level:1, nitro:2,
     ownedCars:[1], activeCarId:1, upgrades:{}, fuel:{}, condition:{},
-    vehicleInstances:{}, plates:{}, tuningHistory:{}, caseHistory:[],
+    vehicleInstances:{}, plates:{}, tuningHistory:{}, caseHistory:[], carVisuals:{},
     stats:{races:0,wins:0,losses:0,bossWins:0,totalEarned:0,totalSpent:0,finesPaid:0,finesCount:0,casinoWagered:0,casinoWon:0,blackjackWins:0,casesOpened:0},
     jobCooldowns:{}, achievements:{}, dailyStreak:0, lastDailyClaim:0,
     settings:{sound:true,animations:true,haptics:true,reducedMotion:false,compactHud:false},
@@ -84,6 +86,11 @@ function normalizeTournamentRuns(src){
 function normalizeContracts(src){
   if(!plainObject(src))return {day:'',items:{}};const out={day:safeText(src.day,'',16),items:{}};if(plainObject(src.items))Object.keys(src.items).slice(0,50).forEach(k=>{const r=src.items[k];if(plainObject(r)&&/^[\w-]{1,64}$/.test(k))out.items[k]={progress:intNumber(r.progress,0,0,1000),claimed:r.claimed===true};});return out;
 }
+function normalizeCarVisuals(src){
+  const out={};if(!plainObject(src))return out;
+  Object.keys(src).slice(0,100).forEach((key)=>{if(!/^\d{1,6}$/.test(key))return;const carId=intNumber(key,0,1,100000);if(!carId)return;out[String(carId)]=normalizeCarVisualConfig(src[key],carId);});
+  return out;
+}
 // Multi-tag community badges now live in @/features/tags/shared (normalizeTags, tagsRowHTML),
 // imported at the top of this file, so a player can carry several badges at once.
 function normalizeState(raw){
@@ -106,7 +113,7 @@ function normalizeState(raw){
     profileTags:normalizeTags(s.profileTags||s.profileTag),
     coins:intNumber(s.coins,b.coins,0,1_000_000_000),
     xp:intNumber(s.xp,0,0,10_000_000), level:intNumber(s.level,1,1,999), nitro:intNumber(s.nitro,2,0,9999),
-    ownedCars:owned, activeCarId:active,
+    ownedCars:owned, activeCarId:active, carVisuals:normalizeCarVisuals(s.carVisuals),
     upgrades:normalizeUpgrades(s.upgrades), fuel:normalizeRecordNumbers(s.fuel,0,100), condition:normalizeRecordNumbers(s.condition,0,100),
     stats:{
       races:intNumber(stats.races,0,0,1e9), wins:intNumber(stats.wins,0,0,1e9), losses:intNumber(stats.losses,0,0,1e9), bossWins:intNumber(stats.bossWins,0,0,1e9),
@@ -201,21 +208,10 @@ function importSave(evt){
   reader.onload=e=>{try{state=normalizeState(JSON.parse(String(e.target.result||'')));saveState();applyUiSettings();showToast('Прогресс восстановлен');switchTab('profile');}catch(_){showToast(' Неверный файл сохранения');}finally{evt.target.value='';}};
   reader.readAsText(file);
 }
-async function resetProgress(){
+function resetProgress(){
   if(!confirm('Точно сбросить весь прогресс? Это действие необратимо.'))return;
   if(!confirm('Последнее предупреждение: машины, деньги и достижения будут удалены. Продолжить?'))return;
-  localStorage.removeItem(SAVE_KEY);LEGACY_SAVE_KEYS.forEach(k=>localStorage.removeItem(k));state=defaultState();applyUiSettings();
-  /* v17-fix: раньше сброс был чисто локальным — в БД оставался старый гараж/баланс,
-     и при следующей синхронизации (checkServerSync/syncPlayerProfile) свежий локальный
-     стейт распознавался как «пустой профиль» и молча ЗАМЕНЯЛСЯ старыми серверными
-     данными — то есть сброс на деле откатывал прогресс назад, а не удалял его.
-     Теперь сразу после локального сброса пушим пустой профиль на сервер и ждём
-     подтверждения, прежде чем считать сброс завершённым. */
-  showToast('Сбрасываем прогресс на сервере…');
-  try{
-    if(typeof syncPlayerProfile==='function') await syncPlayerProfile(true);
-  }catch(e){console.warn('reset: server sync failed',e);}
-  showToast('Новая карьера начата');switchTab('garage');
+  localStorage.removeItem(SAVE_KEY);LEGACY_SAVE_KEYS.forEach(k=>localStorage.removeItem(k));state=defaultState();applyUiSettings();showToast('Новая карьера начата');switchTab('garage');
 }
 function applyUiSettings(){
   document.body.classList.toggle('reduce-motion',!!state.settings.reducedMotion);
@@ -274,31 +270,31 @@ function updateAvatarUI(){
 /* ===== migrated from data.js ===== */
 /* ==================== CARS DB ==================== */
 const carsDB = [
-  { id:1, name:"ВАЗ-2106 'Шестёрка'", image:"/assets/cars/1.webp", price:0, power:150, tier:"Street Tier 1", cat:"street", flavor:"Легенда дворов. Заводится не с первого раза, зато душа поёт, когда наконец завёлся." },
-  { id:2, name:"Volkswagen Golf Mk2", image:"/assets/cars/2.webp", price:700, power:190, tier:"Street Tier 1", cat:"street", flavor:"Немецкая надёжность по цене б/у самоката. Идеально для первых заработков." },
-  { id:3, name:"Toyota AE86 Trueno", image:"/assets/cars/3.webp", price:1400, power:260, tier:"Street Tier 2", cat:"jdm", flavor:"Панда на колёсах. Говорят, кто-то развозил на такой тофу по горным серпантинам." },
-  { id:4, name:"Nissan Silvia S15", image:"/assets/cars/4.webp", price:2600, power:350, tier:"Tuner Tier 2", cat:"jdm", flavor:"Дрифт-икона. На светофорах косятся, на трассе — уважают." },
-  { id:5, name:"Mazda RX-7 FD", image:"/assets/cars/5.webp", price:3200, power:390, tier:"Tuner Tier 2", cat:"jdm", flavor:"Роторный движок воет как турбина. Соседи не любят, зато завидуют." },
-  { id:6, name:"Toyota Supra MK4", image:"/assets/cars/6.webp", price:4400, power:430, tier:"Tuner Tier 3", cat:"jdm", flavor:"2JZ можно крутить бесконечно. Легенда подполья, проверено временем." },
-  { id:7, name:"Mitsubishi Lancer Evo IX", image:"/assets/cars/7.webp", price:4900, power:450, tier:"Tuner Tier 3", cat:"jdm", flavor:"Полный привод и характер бойца. На мокром асфальте не подведёт." },
-  { id:8, name:"Subaru Impreza WRX STI", image:"/assets/cars/8.webp", price:5100, power:465, tier:"Tuner Tier 3", cat:"jdm", flavor:"Оппозитный рокот слышно за квартал. Раллийные гены не пропьёшь." },
-  { id:9, name:"Nissan Skyline GT-R R34", image:"/assets/cars/9.webp", price:6800, power:500, tier:"Tuner Tier 3", cat:"jdm", flavor:"Godzilla. Просто Godzilla. На этом можно закончить описание." },
-  { id:10, name:"Ford Mustang GT", image:"/assets/cars/10.webp", price:3400, power:440, tier:"Muscle Tier 3", cat:"muscle", flavor:"Американская классика. Жрёт бензин как не в себя, но звук V8 того стоит." },
-  { id:11, name:"Dodge Challenger SRT", image:"/assets/cars/11.webp", price:5400, power:490, tier:"Muscle Tier 3", cat:"muscle", flavor:"Тяжёлый, злой, прямолинейный. На драге — король." },
-  { id:12, name:"Chevrolet Camaro SS", image:"/assets/cars/12.webp", price:5700, power:505, tier:"Muscle Tier 3", cat:"muscle", flavor:"Низкий, широкий, агрессивный силуэт. Дизайнеры не сдерживались." },
-  { id:13, name:"BMW M4 Competition", image:"/assets/cars/13.webp", price:7600, power:520, tier:"Sport Tier 4", cat:"sport", flavor:"Баварский хирургический инструмент. Точность в каждом повороте." },
-  { id:14, name:"Mercedes-AMG GT", image:"/assets/cars/14.webp", price:8300, power:560, tier:"Sport Tier 4", cat:"sport", flavor:"Длинный капот, короткий характер. AMG не терпит компромиссов." },
-  { id:15, name:"Audi RS6 Avant", image:"/assets/cars/15.webp", price:8700, power:575, tier:"Sport Tier 4", cat:"sport", flavor:"Универсал, который порвёт половину спорткаров. Quattro не обманывает." },
-  { id:16, name:"Porsche 911 Turbo S", image:"/assets/cars/16.webp", price:13500, power:660, tier:"Supercar Tier 5", cat:"super", flavor:"Инженерное совершенство Штутгарта. Заезд — формальность, победа — данность." },
-  { id:17, name:"Porsche 911 GT3 RS", image:"/assets/cars/17.webp", price:15800, power:700, tier:"Supercar Tier 5", cat:"super", flavor:"Трековый снаряд с номерами. Антикрыло не для красоты." },
-  { id:18, name:"Audi R8 V10", image:"/assets/cars/18.webp", price:17200, power:730, tier:"Supercar Tier 5", cat:"super", flavor:"Атмосферная десятка ревёт так, что закладывает уши прохожим." },
-  { id:19, name:"Nissan GT-R R35", image:"/assets/cars/19.webp", price:18900, power:750, tier:"Supercar Tier 5", cat:"super", flavor:"Компьютерный мозг и звериная тяга. Из коробки готов рвать полигон." },
-  { id:20, name:"McLaren 720S", image:"/assets/cars/20.webp", price:24500, power:790, tier:"Supercar Tier 5", cat:"super", flavor:"Глаза-фары смотрят прямо в душу соперника ещё до старта." },
-  { id:21, name:"Ferrari 488 Pista", image:"/assets/cars/21.webp", price:32000, power:860, tier:"Hypercar Tier 6", cat:"hyper", flavor:"Red is the fastest colour, как говорят в Маранелло." },
-  { id:22, name:"Ferrari SF90 Stradale", image:"/assets/cars/22.webp", price:38500, power:900, tier:"Hypercar Tier 6", cat:"hyper", flavor:"Гибрид, который стыдно называть гибридом. Разгон рвёт шею." },
-  { id:23, name:"Lamborghini Huracan", image:"/assets/cars/23.webp", price:42000, power:930, tier:"Hypercar Tier 6", cat:"hyper", flavor:"Итальянский бык на асфальте. Соседи снимают на телефон каждый выезд." },
-  { id:24, name:"Lamborghini Aventador", image:"/assets/cars/24.webp", price:52000, power:975, tier:"Legendary Boss", cat:"legend", flavor:"Ножничные двери — билет в клуб избранных подполья." },
-  { id:25, name:"Bugatti Chiron", image:"/assets/cars/25.webp", price:78000, power:1200, tier:"Legendary Boss", cat:"legend", flavor:"Не машина — произведение искусства с мотором W16. Топ пищевой цепи." },
+  { id:1, name:"ВАЗ-2106 'Шестёрка'", image:null, price:0, power:150, tier:"Street Tier 1", cat:"street", flavor:"Легенда дворов. Заводится не с первого раза, зато душа поёт, когда наконец завёлся." },
+  { id:2, name:"Volkswagen Golf Mk2", image:null, price:700, power:190, tier:"Street Tier 1", cat:"street", flavor:"Немецкая надёжность по цене б/у самоката. Идеально для первых заработков." },
+  { id:3, name:"Toyota AE86 Trueno", image:null, price:1400, power:260, tier:"Street Tier 2", cat:"jdm", flavor:"Панда на колёсах. Говорят, кто-то развозил на такой тофу по горным серпантинам." },
+  { id:4, name:"Nissan Silvia S15", image:null, price:2600, power:350, tier:"Tuner Tier 2", cat:"jdm", flavor:"Дрифт-икона. На светофорах косятся, на трассе — уважают." },
+  { id:5, name:"Mazda RX-7 FD", image:null, price:3200, power:390, tier:"Tuner Tier 2", cat:"jdm", flavor:"Роторный движок воет как турбина. Соседи не любят, зато завидуют." },
+  { id:6, name:"Toyota Supra MK4", image:null, price:4400, power:430, tier:"Tuner Tier 3", cat:"jdm", flavor:"2JZ можно крутить бесконечно. Легенда подполья, проверено временем." },
+  { id:7, name:"Mitsubishi Lancer Evo IX", image:null, price:4900, power:450, tier:"Tuner Tier 3", cat:"jdm", flavor:"Полный привод и характер бойца. На мокром асфальте не подведёт." },
+  { id:8, name:"Subaru Impreza WRX STI", image:null, price:5100, power:465, tier:"Tuner Tier 3", cat:"jdm", flavor:"Оппозитный рокот слышно за квартал. Раллийные гены не пропьёшь." },
+  { id:9, name:"Nissan Skyline GT-R R34", image:null, price:6800, power:500, tier:"Tuner Tier 3", cat:"jdm", flavor:"Godzilla. Просто Godzilla. На этом можно закончить описание." },
+  { id:10, name:"Ford Mustang GT", image:null, price:3400, power:440, tier:"Muscle Tier 3", cat:"muscle", flavor:"Американская классика. Жрёт бензин как не в себя, но звук V8 того стоит." },
+  { id:11, name:"Dodge Challenger SRT", image:null, price:5400, power:490, tier:"Muscle Tier 3", cat:"muscle", flavor:"Тяжёлый, злой, прямолинейный. На драге — король." },
+  { id:12, name:"Chevrolet Camaro SS", image:null, price:5700, power:505, tier:"Muscle Tier 3", cat:"muscle", flavor:"Низкий, широкий, агрессивный силуэт. Дизайнеры не сдерживались." },
+  { id:13, name:"BMW M4 Competition", image:null, price:7600, power:520, tier:"Sport Tier 4", cat:"sport", flavor:"Баварский хирургический инструмент. Точность в каждом повороте." },
+  { id:14, name:"Mercedes-AMG GT", image:null, price:8300, power:560, tier:"Sport Tier 4", cat:"sport", flavor:"Длинный капот, короткий характер. AMG не терпит компромиссов." },
+  { id:15, name:"Audi RS6 Avant", image:null, price:8700, power:575, tier:"Sport Tier 4", cat:"sport", flavor:"Универсал, который порвёт половину спорткаров. Quattro не обманывает." },
+  { id:16, name:"Porsche 911 Turbo S", image:null, price:13500, power:660, tier:"Supercar Tier 5", cat:"super", flavor:"Инженерное совершенство Штутгарта. Заезд — формальность, победа — данность." },
+  { id:17, name:"Porsche 911 GT3 RS", image:null, price:15800, power:700, tier:"Supercar Tier 5", cat:"super", flavor:"Трековый снаряд с номерами. Антикрыло не для красоты." },
+  { id:18, name:"Audi R8 V10", image:null, price:17200, power:730, tier:"Supercar Tier 5", cat:"super", flavor:"Атмосферная десятка ревёт так, что закладывает уши прохожим." },
+  { id:19, name:"Nissan GT-R R35", image:null, price:18900, power:750, tier:"Supercar Tier 5", cat:"super", flavor:"Компьютерный мозг и звериная тяга. Из коробки готов рвать полигон." },
+  { id:20, name:"McLaren 720S", image:null, price:24500, power:790, tier:"Supercar Tier 5", cat:"super", flavor:"Глаза-фары смотрят прямо в душу соперника ещё до старта." },
+  { id:21, name:"Ferrari 488 Pista", image:null, price:32000, power:860, tier:"Hypercar Tier 6", cat:"hyper", flavor:"Red is the fastest colour, как говорят в Маранелло." },
+  { id:22, name:"Ferrari SF90 Stradale", image:null, price:38500, power:900, tier:"Hypercar Tier 6", cat:"hyper", flavor:"Гибрид, который стыдно называть гибридом. Разгон рвёт шею." },
+  { id:23, name:"Lamborghini Huracan", image:null, price:42000, power:930, tier:"Hypercar Tier 6", cat:"hyper", flavor:"Итальянский бык на асфальте. Соседи снимают на телефон каждый выезд." },
+  { id:24, name:"Lamborghini Aventador", image:null, price:52000, power:975, tier:"Legendary Boss", cat:"legend", flavor:"Ножничные двери — билет в клуб избранных подполья." },
+  { id:25, name:"Bugatti Chiron", image:null, price:78000, power:1200, tier:"Legendary Boss", cat:"legend", flavor:"Не машина — произведение искусства с мотором W16. Топ пищевой цепи." },
 ];
 
 /* ===== BALANCED ECONOMY v12.6 =====
@@ -320,10 +316,10 @@ function economyRaceReward(opp:any){return ECONOMY_V12_6.raceReward(opp);}
 applyEconomyCarPrices(carsDB);
 state.ownedCars=(state.ownedCars||[]).filter((id:any)=>realCarCatalog().some((c:any)=>c.id===Number(id)));if(!state.ownedCars.length)state.ownedCars=[1];if(!state.ownedCars.includes(Number(state.activeCarId)))state.activeCarId=state.ownedCars[0];
 
-function realCarCatalog(){ return carsDB.filter((c:any)=>c&&c.image&&/^\/assets\/cars\/[0-9]+\.webp$/i.test(String(c.image))); }
-function carThumb(car:any){
-  const id=Number(car?.id);return Number.isInteger(id)&&id>=1&&id<=25?('/assets/cars/thumb/'+id+'.webp'):String(car?.image||'/assets/cars/thumb/1.webp');
-}
+function visualConfigForCar(carId:any){const id=intNumber(carId,1,1,100000);return normalizeCarVisualConfig(state.carVisuals?.[String(id)]||defaultCarVisualConfig(id),id);}
+function setVisualConfigForCar(carId:any,config:any){const id=intNumber(carId,1,1,100000);state.carVisuals=plainObject(state.carVisuals)?state.carVisuals:{};state.carVisuals[String(id)]=normalizeCarVisualConfig(config,id);return state.carVisuals[String(id)];}
+function realCarCatalog(){ return carsDB.filter((c:any)=>c&&Number.isInteger(Number(c.id))&&Number(c.id)>=1&&Number(c.id)<=25); }
+function carThumb(car:any){return carVisualDataUri(visualConfigForCar(Number(car?.id)||1));}
 function rivalCatalogCar(opp:any){
   const list=realCarCatalog(); if(!list.length)return carsDB[0];
   const power=Math.max(1,Number(opp?.power)||1);
@@ -347,36 +343,10 @@ const CAT_COLORS = { street:['#94a3b8','#334155'], jdm:['#38bdf8','#0c4a6e'], mu
 
 /* ==================== CAR ART (SVG, matches by category — no more mismatched photos) ==================== */
 function carArtSVG(car){
-  if(car.image){
-    return '<img class="car-real-image" src="'+String(car.image).replace(/"/g,'&quot;')+'" alt="'+String(car.name).replace(/"/g,'&quot;')+'" loading="lazy">';
-  }
-  const col = CAT_COLORS[car.cat] || CAT_COLORS.street;
-  const c1=col[0], c2=col[1];
-  const shape = ['street','jdm','muscle'].includes(car.cat) ? 'classic' : (['sport','super'].includes(car.cat) ? 'coupe' : 'hyper');
-  const gid = 'g'+car.id;
-  const spoiler = shape==='hyper' ? '<rect x="150" y="53" width="58" height="6" rx="2" fill="'+c1+'"/><rect x="154" y="41" width="6" height="15" fill="'+c1+'"/><rect x="198" y="41" width="6" height="15" fill="'+c1+'"/>' : '';
-  let body;
-  if(shape==='classic'){
-    body = '<path d="M20 110 Q20 90 45 88 L70 60 Q80 50 100 50 L160 50 Q180 50 190 65 L215 88 Q240 90 240 110 L240 118 Q240 124 232 124 L28 124 Q20 124 20 118 Z" fill="url(#'+gid+')"/>';
-  } else if(shape==='coupe'){
-    body = '<path d="M15 112 Q15 88 42 85 L65 55 Q78 42 105 42 L165 42 Q188 44 200 60 L222 85 Q245 88 245 112 L245 120 Q245 126 237 126 L23 126 Q15 126 15 120 Z" fill="url(#'+gid+')"/>';
-  } else {
-    body = '<path d="M10 114 Q10 95 35 90 L60 62 Q75 44 110 42 L160 42 Q195 44 208 65 L228 90 Q250 92 250 114 L250 122 Q250 127 242 127 L18 127 Q10 127 10 122 Z" fill="url(#'+gid+')"/>';
-  }
-  const hueShift = ((car.id*29) % 40) - 20;
-  return '<svg viewBox="0 0 260 150" preserveAspectRatio="xMidYMid slice" style="filter:hue-rotate('+hueShift+'deg)">'+
-    '<defs><linearGradient id="'+gid+'" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="'+c1+'"/><stop offset="1" stop-color="'+c2+'"/></linearGradient>'+
-    '<linearGradient id="bgg'+gid+'" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0e0e16"/><stop offset="1" stop-color="#050508"/></linearGradient></defs>'+
-    '<rect width="260" height="150" fill="url(#bgg'+gid+')"/>'+
-    '<ellipse cx="130" cy="129" rx="112" ry="9" fill="'+c1+'" opacity="0.18"/>'+
-    body + spoiler +
-    '<rect x="35" y="66" width="185" height="2" fill="rgba(255,255,255,.15)"/>'+
-    '<circle cx="65" cy="126" r="17" fill="#0a0a0e" stroke="'+c1+'" stroke-width="3"/><circle cx="65" cy="126" r="6" fill="'+c1+'"/>'+
-    '<circle cx="195" cy="126" r="17" fill="#0a0a0e" stroke="'+c1+'" stroke-width="3"/><circle cx="195" cy="126" r="6" fill="'+c1+'"/>'+
-    '<rect x="205" y="94" width="15" height="6" rx="2" fill="#fff" opacity="0.9"/>'+
-    '<rect x="28" y="94" width="10" height="5" rx="2" fill="#ff3b3b" opacity="0.85"/>'+
-    '</svg>';
+  const id=Number(car?.id)||1;
+  return carVisualSvgMarkup(visualConfigForCar(id),{className:'car-vector-art-v17',title:String(car?.name||'Автомобиль')});
 }
+
 
 /* ==================== TUNING (5 stages + Nitro + Tires) ==================== */
 const TUNE_TYPES = [
@@ -1386,8 +1356,12 @@ function openPublicProfile(name,val,wins,races,cars,profile){
   const ownedHtml=list.length ? list.map(x=>'<span class="player-lb-car">'+escapeHtml(x)+'</span>').join('') : '<span style="color:var(--text-muted);font-size:10px;">Нет данных</span>';
   const balance=profile ? Number(profile.balance)||0 : Number(val)||0;
   const level=profile ? Number(profile.level)||1 : 1;
+  const profileActiveId=Number(profile?.active_car_id)||Number(profile?.activeCarId)||0;
+  const profileVisuals=plainObject(profile?.car_visuals)?profile.car_visuals:(plainObject(profile?.carVisuals)?profile.carVisuals:{});
+  const activePublicCar=profileActiveId?carsDB.find((c:any)=>Number(c.id)===profileActiveId):null;
+  const activePublicVisual=activePublicCar?'<div class="pp-active-car-v17">'+carVisualSvgMarkup(normalizeCarVisualConfig(profileVisuals?.[String(profileActiveId)],profileActiveId),{className:'car-vector-art-v17',title:String(activePublicCar.name||'Автомобиль')})+'<div><small>АКТИВНАЯ МАШИНА</small><b>'+escapeHtml(activePublicCar.name)+'</b></div></div>':'';
   root.innerHTML='<div class="modal-overlay" onclick="if(event.target===this)closePublicProfile()"><div class="public-profile">'+
-    '<div class="pp-head"><div class="public-avatar">'+escapeHtml((name||'Г').charAt(0).toUpperCase())+'</div><div><div style="font-size:18px;font-weight:1000;">'+escapeHtml(name)+'</div><div style="color:var(--text-muted);font-size:10px;font-weight:900;">УРОВЕНЬ '+level+' · УЧАСТНИК СИНДИКАТА</div></div></div>'+
+    '<div class="pp-head"><div class="public-avatar">'+escapeHtml((name||'Г').charAt(0).toUpperCase())+'</div><div><div style="font-size:18px;font-weight:1000;">'+escapeHtml(name)+'</div><div style="color:var(--text-muted);font-size:10px;font-weight:900;">УРОВЕНЬ '+level+' · УЧАСТНИК СИНДИКАТА</div></div></div>'+activePublicVisual+
     '<div class="pp-grid"><div class="pp-stat"><span>Баланс</span><b>'+fmt(balance)+' SYND</b></div><div class="pp-stat"><span>Заработано</span><b>'+fmt(val)+' SYND</b></div><div class="pp-stat"><span>Победы</span><b>'+wins+'</b></div><div class="pp-stat"><span>Заезды</span><b>'+races+'</b></div><div class="pp-stat"><span>Процент побед</span><b>'+wr+'%</b></div></div>'+
     '<div class="pp-stat" style="margin-top:8px;"><span>Машины игрока</span><div class="player-lb-cars" style="margin-top:8px;">'+ownedHtml+'</div></div>'+
     '<button class="btn btn-ghost" style="margin-top:12px;" onclick="closePublicProfile()">ЗАКРЫТЬ</button></div></div>';
@@ -1520,17 +1494,13 @@ function chooseLaunch(mode){
   const error=Math.abs(pos-center);
   const quality=Math.max(0,1-error/.30);
   if(quality>=.90){state.raceStats.perfectStarts=(state.raceStats.perfectStarts||0)+1;haptic('success');}
-  /* v16-fix: chase/ДПС modes set a distance head-start (c.distance=80) before the launch
-     minigame runs. The launch result must ADD to that head-start, not overwrite it —
-     otherwise the ДПС patrol effectively spawns almost level with the player. */
-  const headStart=(c.chase||c.isPolice)?(Number(c.distance)||0):0;
   if(mode==='spin'){
     state.raceStats.hardLaunches=(state.raceStats.hardLaunches||0)+1;
-    c.rpm=4700+quality*900;c.speed=10+quality*8;c.distance=headStart+1.2+quality*1.2;
+    c.rpm=4700+quality*900;c.speed=10+quality*8;c.distance=1.2+quality*1.2;
     c.launchGrip=Math.max(.76,c.profile.launchGrip-(1-quality)*.12);
   }else{
     state.raceStats.safeLaunches=(state.raceStats.safeLaunches||0)+1;
-    c.rpm=2600+quality*1900;c.speed=7+quality*8;c.distance=headStart+.8+quality*1.4;
+    c.rpm=2600+quality*1900;c.speed=7+quality*8;c.distance=.8+quality*1.4;
     c.launchGrip=.98;
   }
   /* AI старт не идеальный по умолчанию. Его шанс зависит от силы машины. */
@@ -2051,27 +2021,9 @@ async function syncPlayerProfile(force=false){
   if(!force&&Date.now()-lastProfileSyncAt<20000)return true;
   profileSyncInFlight=(async()=>{try{
     const car=typeof carsDB!=='undefined'?carsDB.find(c=>c.id===state.activeCarId):null;
-    /* v17-fix: раньше сюда уходили только «презентационные» поля — owned_cars/баланс/
-       статистика в БД годами не обновлялись после первого входа. Инлайн-бот и рейтинг
-       читают именно БД, поэтому у друзей там залипали давно проданные машины, а
-       «сброс прогресса» подтягивал эти протухшие данные обратно вместо сброса.
-       Теперь клиент (авторитетный источник истины) при каждом синке присылает
-       актуальный гараж и экономику, и сервер их сохраняет. */
     const response=await serverFetch('/api/profile/sync',{
       method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({
-        displayName:safeText(state.playerName,'Гонщик',48),photoUrl:state.playerPhoto||null,currentCarName:car?.name||null,
-        activeCarId:Number(state.activeCarId)||1,activePlate:(typeof activePlate==='function'?activePlate(Number(state.activeCarId)||1):null),
-        wantedLevel:Math.max(0,Math.min(5,Number(state.heat)||0)),
-        ownedCars:Array.isArray(state.ownedCars)?state.ownedCars.slice(0,100):[],
-        balance:Math.max(0,Math.round(Number(state.coins)||0)),
-        xp:Math.max(0,Math.round(Number(state.xp)||0)),
-        level:Math.max(1,Math.round(Number(state.level)||1)),
-        races:Math.max(0,Math.round(Number(state.stats?.races)||0)),
-        wins:Math.max(0,Math.round(Number(state.stats?.wins)||0)),
-        losses:Math.max(0,Math.round(Number(state.stats?.losses)||0)),
-        totalEarned:Math.max(0,Math.round(Number(state.stats?.totalEarned)||0))
-      })
+      body:JSON.stringify({displayName:safeText(state.playerName,'Гонщик',48),photoUrl:state.playerPhoto||null,currentCarName:car?.name||null,activeCarId:Number(state.activeCarId)||1,activePlate:(typeof activePlate==='function'?activePlate(Number(state.activeCarId)||1):null),wantedLevel:Math.max(0,Math.min(5,Number(state.heat)||0)),carVisuals:normalizeCarVisuals(state.carVisuals)})
     });
     if(!response.ok)return false;
     lastProfileSyncAt=Date.now();return true;
@@ -2570,7 +2522,7 @@ async function claimPvpResults(){
   }
   function vehicleSnapshot(carId){
     const id=Number(carId),car=carsDB.find(c=>c.id===id);if(!car)return null;
-    return {version:2,carId:id,upgrades:{...getUpg(id)},fuel:getFuel(id),condition:getCondition(id),plate:activePlate(id),tuningHistory:(state.tuningHistory?.[id]||[]).slice(-30),effectivePower:getEffectivePower(car),tuningValue:tuningInstalledValue(id),buildRating:buildRating(id)};
+    return {version:2,carId:id,upgrades:{...getUpg(id)},fuel:getFuel(id),condition:getCondition(id),plate:activePlate(id),tuningHistory:(state.tuningHistory?.[id]||[]).slice(-30),effectivePower:getEffectivePower(car),tuningValue:tuningInstalledValue(id),buildRating:buildRating(id),visualConfig:visualConfigForCar(id)};
   }
   function applyVehicleSnapshot(snap){
     if(!snap||!carsDB.some(c=>c.id===Number(snap.carId)))return false;
@@ -2579,6 +2531,7 @@ async function claimPvpResults(){
     TUNE_TYPES.forEach(t=>state.upgrades[id][t.key]=intNumber(state.upgrades[id][t.key],0,0,5));
     state.fuel[id]=finiteNumber(snap.fuel,100,0,100);state.condition[id]=finiteNumber(snap.condition,100,0,100);
     state.tuningHistory[id]=Array.isArray(snap.tuningHistory)?snap.tuningHistory.slice(-30):[];
+    if(snap.visualConfig)setVisualConfigForCar(id,snap.visualConfig);
     let p=normalizePlate(snap.plate);
     if(p){
       if(state.plateInventory.some(x=>x.uid===p.uid)){p={...p,uid:p.uid+'_m'+Date.now().toString(36)};}
@@ -2594,7 +2547,7 @@ async function claimPvpResults(){
   buyCar=function(carId){
     if(escrowCarIds().has(Number(carId))){showToast('Эта модель сейчас находится в рыночном лоте');return;}
     const before=state.ownedCars.includes(carId);baseBuyCar(carId);
-    if(!before&&state.ownedCars.includes(carId)){state.tuningHistory[carId]=state.tuningHistory[carId]||[];saveState();if(typeof syncPlayerProfile==='function')void syncPlayerProfile(true);}
+    if(!before&&state.ownedCars.includes(carId)){state.tuningHistory[carId]=state.tuningHistory[carId]||[];saveState();}
   };
   const baseUpgradeTune=upgradeTune;
   upgradeTune=function(carId,key){
@@ -2860,7 +2813,7 @@ async function claimPvpResults(){
   buyListing=async function(id){
     if(!await requireOnlineWrite('Рынок'))return;try{const rr=await serverFetch('/api/market?id='+encodeURIComponent(String(id)),{credentials:'include',cache:'no-store'}),pp=await rr.json().catch(()=>null),data=pp?.data;if(!rr.ok||!data||data.status!=='active'){showToast('Лот уже недоступен');refreshMarket();return;}if(data.seller_id===state.playerId)return;const snap=marketVehicleFromRow(data),carId=Number(snap.carId||data.car_id);if(state.ownedCars.includes(carId)||escrowCarIds().has(carId)){showToast('Такая модель уже есть в гараже или находится в вашем лоте');return;}if(state.coins<data.price){showToast('Недостаточно SYND');return;}const sold=await marketApiV10({action:'buy',listingId:Number(id)});if(!sold?.id)throw new Error('listing was not sold');state.coins-=data.price;state.stats.totalSpent+=data.price;applyVehicleSnapshot(snap);showToast('Куплено: машина, тюнинг и установленный номер');updateHeader();saveState();refreshMarket();}catch(e){console.warn(e);showToast('Не удалось купить лот');}
   };
-  sellToState=function(carId){if(!state.ownedCars.includes(carId)||state.ownedCars.length<=1)return;const car=carsDB.find(c=>c.id===carId),price=stateSellPrice(car);if(!confirm('Продать '+car.name+' государству за '+fmt(price)+' SYND? Установленный тюнинг и номер уйдут вместе с машиной.'))return;state.coins+=price;state.stats.totalEarned+=price;state.ownedCars=state.ownedCars.filter(id=>id!==carId);if(state.activeCarId===carId)state.activeCarId=state.ownedCars[0];const uid=state.installedPlates[String(carId)];if(uid)state.plateInventory=state.plateInventory.filter(p=>p.uid!==uid);delete state.installedPlates[String(carId)];delete state.upgrades[carId];delete state.fuel[carId];delete state.condition[carId];delete state.tuningHistory[carId];showToast('Машина продана вместе со сборкой');updateHeader();saveState();renderSellPicker();/* v17-fix: сразу пушим актуальный гараж в БД, а не ждём следующего заезда/интервала — иначе проданная машина ещё долго «живёт» в базе (инлайн-бот, рейтинг). */if(typeof syncPlayerProfile==='function')void syncPlayerProfile(true);};
+  sellToState=function(carId){if(!state.ownedCars.includes(carId)||state.ownedCars.length<=1)return;const car=carsDB.find(c=>c.id===carId),price=stateSellPrice(car);if(!confirm('Продать '+car.name+' государству за '+fmt(price)+' SYND? Установленный тюнинг и номер уйдут вместе с машиной.'))return;state.coins+=price;state.stats.totalEarned+=price;state.ownedCars=state.ownedCars.filter(id=>id!==carId);if(state.activeCarId===carId)state.activeCarId=state.ownedCars[0];const uid=state.installedPlates[String(carId)];if(uid)state.plateInventory=state.plateInventory.filter(p=>p.uid!==uid);delete state.installedPlates[String(carId)];delete state.upgrades[carId];delete state.fuel[carId];delete state.condition[carId];delete state.tuningHistory[carId];showToast('Машина продана вместе со сборкой');updateHeader();saveState();renderSellPicker();};
 
   async function reconcileMarketEscrow(){
     if(!onlineAuthReady||!state.playerId)return;
@@ -3757,13 +3710,15 @@ if (typeof window !== 'undefined') {
       state.stats.losses=Math.max(0,Number(serverPlayer.losses)||0);
       state.stats.totalEarned=Math.max(0,Number(serverPlayer.total_earned)||0);
       state.profileTags=normalizeTags(serverPlayer.profile_tags);
+      if(plainObject(serverPlayer.car_visuals))state.carVisuals=normalizeCarVisuals(serverPlayer.car_visuals);
       saveState();
     }
     state.profileTags=normalizeTags(serverPlayer.profile_tags);
+    if(plainObject(serverPlayer.car_visuals))state.carVisuals={...normalizeCarVisuals(serverPlayer.car_visuals),...normalizeCarVisuals(state.carVisuals)};
   }
   if(Array.isArray(bootstrap.cars) && bootstrap.cars.length){
-    const normalized=bootstrap.cars.filter((c:any)=>c&&Number.isInteger(Number(c.id))&&Number(c.id)>=1&&Number(c.id)<=25&&/^\/assets\/cars\/[0-9]+\.webp$/i.test(String(c.image||''))).map((c:any)=>({
-      id:Number(c.id),name:String(c.name||`CAR ${c.id}`),image:c.image?String(c.image):null,price:Number(c.price)||0,power:Number(c.power)||100,
+    const normalized=bootstrap.cars.filter((c:any)=>c&&Number.isInteger(Number(c.id))&&Number(c.id)>=1&&Number(c.id)<=25).map((c:any)=>({
+      id:Number(c.id),name:String(c.name||`CAR ${c.id}`),image:null,price:Number(c.price)||0,power:Number(c.power)||100,
       tier:String(c.tier||'Street'),cat:String(c.cat||'street'),flavor:String(c.flavor||'')
     }));
     carsDB.splice(0,carsDB.length,...normalized);applyEconomyCarPrices(carsDB);
@@ -3799,7 +3754,7 @@ if (typeof window !== 'undefined') {
       wins:Number(opp?.wins)||0,
       losses:Number(opp?.losses)||0,
       car:String(rivalCatalogCar(opp)?.name||"ВАЗ-2106 'Шестёрка'"),
-      carImage:String(rivalCatalogCar(opp)?.image||'/assets/cars/1.webp'),
+      carImage:carThumb(rivalCatalogCar(opp)),
       rating:Number(opp?.rating)||Math.min(99,Math.round(50+(Number(opp?.power)||200)/18)),
       record:rec
     };
@@ -3863,30 +3818,8 @@ if (typeof window !== 'undefined') {
     const onlineLabel=document.getElementById('duel-online-label');if(onlineLabel)onlineLabel.textContent=pool.length+' соперников';
     if(!visible.length){root.innerHTML='<div class="empty-note">Подходящие соперники появятся после следующего обновления сетки.</div>';return;}
     root.innerHTML=visible.map((opp:any,idx:number)=>{
-      const m=rivalMetaV11(opp),rivalCar=rivalCatalogCar(opp),delta=(Number(opp.power)-myPower)/Math.max(myPower,1),winChance=Math.max(4,Math.min(96,Math.round(50-delta*82))),recent=history.includes(String(opp.id));
-      const r=state.tournamentRuns[String(opp.id)]||{},day=new Date().toISOString().slice(0,10),count=state.duelSub==='tour'&&r.day===day?(Number(r.count)||0):0,mult=state.duelSub==='tour'?([1,.72,.48][Math.min(2,count)]||.48):1;
-      /* v16-fix: экономика перекошена — цены на тюнинг/машины выросли до сотен
-         миллионов (ECONOMY_V12_6.carPrices), а призы за обычные и «риск»-заезды
-         остались статичными из ранней таблицы opponentsDB (максимум ~34к даже
-         за самого сильного босса) и вообще не учитывали риск гонки.
-         Теперь приз — это max(табличного приза, честной формулы от мощности
-         соперника) с явной риск-надбавкой: чем сильнее соперник относительно
-         твоей эффективной мощности, тем больше премия. За «РИСК»/«ПРЕДЕЛ» и
-         боссов доплата особенно ощутима. Значение фиксируется в opp.reward,
-         чтобы выплата в finishRace всегда совпадала с тем, что показано здесь,
-         а вход (fee) считается уже от актуального приза — без рассинхрона
-         между первым и повторным рендером списка. */
-      let reward;
-      if(state.duelSub==='tour'){
-        reward=Math.round(Number(opp.reward||0)*mult);
-      }else{
-        const riskDelta=Math.max(0,delta);
-        const riskMult=1+Math.min(1.8,riskDelta*2.1)+(opp.boss?0.35:0);
-        const fairReward=Math.round(Math.max(Number(opp.reward||0),economyRaceReward(opp))*riskMult);
-        opp.reward=fairReward;
-        reward=fairReward;
-      }
-      const fee=entryFeeFor(opp);
+      const m=rivalMetaV11(opp),rivalCar=rivalCatalogCar(opp),delta=(Number(opp.power)-myPower)/Math.max(myPower,1),winChance=Math.max(4,Math.min(96,Math.round(50-delta*82))),fee=entryFeeFor(opp),recent=history.includes(String(opp.id));
+      const r=state.tournamentRuns[String(opp.id)]||{},day=new Date().toISOString().slice(0,10),count=state.duelSub==='tour'&&r.day===day?(Number(r.count)||0):0,mult=state.duelSub==='tour'?([1,.72,.48][Math.min(2,count)]||.48):1,reward=Math.round(Number(opp.reward||0)*mult);
       const cls=opp.boss?'boss extreme':delta>.28?'extreme':delta>.08?'risk':delta<-.15?'easy':'even',label=opp.boss?'БОСС':delta>.28?'ПРЕДЕЛ':delta>.08?'РИСК':delta<-.15?'ПРЕИМУЩЕСТВО':'РАВНО';
       const bossLocked=!!opp.boss && state.level<Number(opp.unlockLevel||1);
       return '<article class="duel-card-v127 '+cls+'" style="animation-delay:'+Math.min(idx*22,100)+'ms"><div class="duel-car-v127"><img src="'+escapeHtml(carThumb(rivalCar))+'" alt=""><span>'+escapeHtml(m.avatar)+'</span></div><div class="duel-core-v127"><div class="duel-name-v127"><b>'+escapeHtml(opp.name)+'</b><i>'+label+'</i></div><small>'+escapeHtml(rivalCar?.name||m.car)+'</small><div class="duel-stats-v127"><span>'+fmt(opp.power)+' л.с.</span><span>Рейтинг '+m.rating+'</span><span>'+winChance+'%</span></div><div class="duel-bar-v127"><i style="width:'+winChance+'%"></i></div></div><div class="duel-go-v127"><div><span>Вход <b>'+fmt(fee)+'</b></span><span>Приз <b>'+fmt(reward)+'</b></span></div><button '+(bossLocked?'disabled':'')+' onclick="prepareRace(\''+String(opp.id).replace(/'/g,"\\'")+'\',\''+(state.duelSub==='tour'?'tour':'normal')+'\')">'+(bossLocked?'LVL '+Number(opp.unlockLevel||1):'НА ЛИНИЮ')+'</button>'+(recent?'<small>Недавний заезд</small>':'')+'</div></article>';
@@ -4601,16 +4534,7 @@ if (typeof window !== 'undefined') {
     if(state.heat>=5&&!c.chase&&Math.random()<.45){c.blockade=true;c.opp.reward=Math.max(1,Math.round(Number(c.opp.reward||0)*.5));showToast('ОБЛАВА · полиция блокировала трассу · приз ×0.5');renderRaceBrief();}
   };
   const priorStartChaseV14=(window as any).startSpecialChase;
-  /* v16-fix: убрали лишний повторный renderRaceBrief() — он тут был не нужен
-     (экран уже отрисован внутри priorStartChaseV14 -> prepareRace) и только
-     создавал риск гонки состояний при быстром повторном тапе по кнопке. */
-  (window as any).startSpecialChase=function(){
-    syncWantedDecayV14();
-    if(Number(state.arrestUntil)>Date.now()){showToast('Ты под временным арестом');return;}
-    addHeat(1);priorStartChaseV14();
-    const c=raceCtx;
-    if(c){c.trackLength=1500;c.distance=80;c.aiDistance=0;c.chase=true;c.isPolice=true;c.chasePrevGap=80;}
-  };
+  (window as any).startSpecialChase=function(){syncWantedDecayV14();if(Number(state.arrestUntil)>Date.now()){showToast('Ты под временным арестом');return;}addHeat(1);priorStartChaseV14();const c=raceCtx;if(c){c.trackLength=1500;c.distance=80;c.aiDistance=0;c.chase=true;c.isPolice=true;c.chasePrevGap=80;renderRaceBrief();}};
 
   // Wanted 4: one hidden undercover opponent can replace a duel.
   const priorOppV14=renderOpponents;
@@ -4916,11 +4840,7 @@ if (typeof window !== 'undefined') {
     if(!root||root.dataset.v16DragBound==='1')return;
     root.dataset.v16DragBound='1';
     root.classList.add('garage-drag-v16');
-    /* v16-fix: touch-action:pan-y only — letting the browser also claim pan-x
-       here fought with this pointer-drag handler on every swipe and caused
-       the reported micro-stutter. Horizontal motion is 100% JS + scroll-snap. */
-    root.style.touchAction='pan-y';
-    root.style.scrollSnapType='x mandatory';
+    root.style.touchAction='pan-y pinch-zoom';
     let pointerId=-1,startX=0,startY=0,startScroll=0,dragging=false,decided=false;
     const clear=(snap=true)=>{
       if(pointerId>=0&&root.hasPointerCapture?.(pointerId)){try{root.releasePointerCapture(pointerId);}catch{}}
@@ -4983,52 +4903,8 @@ if (typeof window !== 'undefined') {
     map.classList.toggle('chase-v16',!!(c.chase||c.isPolice));
   }
 
-  /* v16-fix: критический баг ДПС — «ГАЗ» не реагировал на нажатия на старте.
-     Пелали #gas-btn/#brake-btn вызывают глобальную window.raceHold(...) из инлайн
-     onpointerdown, но это единственная точка склейки. Если она когда-либо не
-     совпадает с актуальной физикой (или трек-таймер стартового светофора не
-     успевает снять startLocked из-за конкурентного повторного рендера брифинга
-     в режиме ДПС), педаль газа выглядит «мёртвой», а машина стоит на месте.
-     Чиним двумя слоями защиты:
-       1) На каждый показ кокпита переустанавливаем window.raceHold/window.manualShift
-          на актуальные функции и вешаем НАСТОЯЩИЕ addEventListener-обработчики на
-          сами кнопки — teper клик работает даже если инлайн-атрибут когда-то
-          зацепился за протухшую ссылку.
-       2) Сторожевой таймер: если через 2.5с после показа кокпита startLocked всё
-          ещё true (светофор не снял блокировку), снимаем её принудительно —
-          гонка не должна «зависать» намертво из-за пропущенного таймера. */
-  function rebindRaceControlsV16(){
-    (window as any).raceHold=raceHold;
-    (window as any).manualShift=manualShift;
-    (window as any).useRaceNitro=(window as any).useRaceNitro||useRaceNitro;
-    const gas=document.getElementById('gas-btn'),brake=document.getElementById('brake-btn');
-    const bind=(el:HTMLElement|null,type:'gas'|'brake')=>{
-      if(!el||el.dataset.raceHoldBoundV16==='1')return;
-      el.dataset.raceHoldBoundV16='1';
-      const down=(e:Event)=>{e.preventDefault();raceHold(type,true);};
-      const up=()=>raceHold(type,false);
-      el.addEventListener('pointerdown',down,{passive:false});
-      el.addEventListener('pointerup',up,{passive:true});
-      el.addEventListener('pointercancel',up,{passive:true});
-      el.addEventListener('pointerleave',up,{passive:true});
-    };
-    bind(gas,'gas');bind(brake,'brake');
-  }
   const cockpitBaseV16=showRaceCockpit;
-  showRaceCockpit=function(){
-    cockpitBaseV16();decorateRaceV16();rebindRaceControlsV16();
-    const c=raceCtx;
-    if(c){
-      const startedAt=c.elapsed||0;
-      setTimeout(()=>{
-        if(raceCtx===c && !c.finished && c.startLocked){
-          c.startLocked=false;c.startTimer=0;
-          const light=document.getElementById('race-start-light');if(light)light.classList.remove('show');
-          showAction('СТАРТ РАЗБЛОКИРОВАН');
-        }
-      },2500);
-    }
-  };
+  showRaceCockpit=function(){cockpitBaseV16();decorateRaceV16();};
   (window as any).showRaceCockpit=showRaceCockpit;
 
   function applyPrivateRemoteProgressV16(c:any,map:HTMLElement,len:number){
@@ -5117,4 +4993,167 @@ if (typeof window !== 'undefined') {
   // Re-render current surfaces after final V16 overrides are in place.
   if(document.getElementById('screen-garage')?.classList.contains('active'))renderGarage();
   if(document.getElementById('screen-shop')?.classList.contains('active'))renderShop();
+})();
+
+/* ==================== UPDATE 17 · PIXI 2.5D + LAYERED CAR VISUALS ==================== */
+(() => {
+  let pixiRaceV17:any=null;
+  let pixiRaceTokenV17=0;
+
+  function destroyPixiRaceV17(){
+    pixiRaceTokenV17++;
+    if(pixiRaceV17){try{pixiRaceV17.destroy();}catch(_){}pixiRaceV17=null;}
+  }
+
+  function raceVisualForNpcV17(carId:any,seed=0){
+    const id=Number(carId)||1;
+    const base=defaultCarVisualConfig(id) as any;
+    const palette=['#e5e7eb','#ef4444','#2563eb','#16a34a','#f59e0b','#7c3aed','#111827'];
+    return normalizeCarVisualConfig({...base,paint:{...base.paint,hex:palette[Math.abs(Number(seed)||id)%palette.length]}},id);
+  }
+
+  function privateVisualFromPayloadV17(payload:any,remote=false){
+    try{
+      const role=payload?.role;
+      const room=payload?.room||{};
+      const playerId=remote?(role==='a'?room.player_b_id:room.player_a_id):(role==='a'?room.player_a_id:room.player_b_id);
+      const carId=Number(remote?(role==='a'?room.player_b_car_id:room.player_a_car_id):(role==='a'?room.player_a_car_id:room.player_b_car_id))||1;
+      const profile=(payload?.profiles||[]).find((p:any)=>p?.id===playerId);
+      return normalizeCarVisualConfig(profile?.car_visuals?.[String(carId)],carId);
+    }catch(_){return null;}
+  }
+
+  const privateStartV17=(window as any).__AUTOSYNDICATE_START_PRIVATE_DUEL__;
+  if(typeof privateStartV17==='function'){
+    (window as any).__AUTOSYNDICATE_START_PRIVATE_DUEL__=(payload:any)=>{
+      privateStartV17(payload);
+      if(raceCtx){
+        raceCtx.privateLocalVisualV17=privateVisualFromPayloadV17(payload,false);
+        raceCtx.privateRemoteVisualV17=privateVisualFromPayloadV17(payload,true);
+      }
+    };
+  }
+
+  function buildRaceRacersV17(c:any){
+    const racers:any[]=[{id:'player',label:state.playerName||'ВЫ',kind:'player',visual:c.privateLocalVisualV17||visualConfigForCar(state.activeCarId)}];
+    if(c.chase||c.isPolice){
+      const copId=10,base:any=defaultCarVisualConfig(copId);
+      racers.push({id:'rival-0',label:'ДПС',kind:'cop',visual:normalizeCarVisualConfig({...base,paint:{...base.paint,hex:'#f8fafc'},tint:{...base.tint,opacity:.88}},copId)});
+      return racers;
+    }
+    if(c.chaosBots?.length){
+      c.chaosBots.forEach((bot:any,i:number)=>{
+        const carId=Number(bot?.v15VisualCarId)||Number(rivalCatalogCar(bot)?.id)||1;
+        racers.push({id:'rival-'+i,label:bot?.name||('BOT '+(i+1)),kind:'rival',visual:raceVisualForNpcV17(carId,i+carId)});
+      });
+      return racers;
+    }
+    const rc=rivalCatalogCar(c.opp||{}),carId=Number(c.opp?.v15VisualCarId)||Number(rc?.id)||1;
+    racers.push({id:'rival-0',label:c.opp?.name||'RIVAL',kind:'rival',visual:c.privateRemoteVisualV17||raceVisualForNpcV17(carId,Number(c.opp?.power)||carId)});
+    return racers;
+  }
+
+  function raceDistancesV17(c:any){
+    const rows:any[]=[{id:'player',distance:Number(c.distance)||0}];
+    if(c.chase||c.isPolice){rows.push({id:'rival-0',distance:Number(c.aiDistance)||0});return rows;}
+    if(c.chaosBots?.length){
+      const n=c.chaosBots.length;
+      c.chaosBots.forEach((_:any,i:number)=>{const factor=1+(i-(n-1)/2)*.032;rows.push({id:'rival-'+i,distance:Math.max(0,(Number(c.aiDistance)||0)*factor)});});
+      return rows;
+    }
+    const remote=Number(c.privateRemoteProgress?.distance);
+    rows.push({id:'rival-0',distance:Number.isFinite(remote)?remote:(Number(c.aiDistance)||0)});
+    return rows;
+  }
+
+  function mountPixiRaceV17(c:any){
+    destroyPixiRaceV17();
+    const host=document.getElementById('pixi-race-host-v17') as HTMLElement|null;if(!host)return;
+    const token=++pixiRaceTokenV17;
+    void import('@/features/race/pixi/PixiDragRaceEngine').then(async(mod)=>{
+      if(token!==pixiRaceTokenV17||!document.body.contains(host))return;
+      try{
+        const engine=await mod.mountPixiDragRace(host,{racers:buildRaceRacersV17(c),reducedMotion:!!state.settings?.reducedMotion});
+        if(token!==pixiRaceTokenV17||!document.body.contains(host)){engine.destroy();return;}
+        pixiRaceV17=engine;
+        engine.update({playerDistance:Number(c.distance)||0,speedKmh:Number(c.speed)||0,racers:raceDistancesV17(c),trackLength:Math.max(1,Number(c.trackLength)||402)});
+      }catch(error){console.warn('Pixi race mount failed',error);host.innerHTML='<div class="pixi-race-error-v17">WEBGL НЕДОСТУПЕН · РЕЗЕРВНЫЙ HUD АКТИВЕН</div>';}
+    });
+  }
+
+  function manualShiftDownV17(){
+    const c:any=raceCtx;if(!c||c.finished||c.startLocked)return;
+    const gear=Math.max(1,Number(c.gear)||1);if(gear<=1){showShiftText('1-Я ПЕРЕДАЧА · НИЖЕ НЕКУДА',false);return;}
+    const next=gear-1,cap=Number(c.gearCaps?.[next]||GEAR_CAPS[next]||0);
+    if(cap&&Number(c.speed)>cap*.94){showAction('ПОНИЖЕНИЕ ЗАБЛОКИРОВАНО · СЛИШКОМ ВЫСОКАЯ СКОРОСТЬ');haptic('warning');return;}
+    c.gear=next;c.rpm=Math.min(Number(c.redline)||8500,Math.max(1500,speedToRpm(Number(c.speed)||0,next,Number(c.redline)||8500)));c.shiftBoost=.98;c.shiftBoostTimer=.15;showShiftText('ПОНИЖЕНИЕ · '+next+' ПЕРЕДАЧА',false);haptic('light');updateRaceHUD();
+  }
+  (window as any).manualShiftDownV17=manualShiftDownV17;
+
+  const cockpitV17=showRaceCockpit;
+  showRaceCockpit=function(){
+    cockpitV17();const c:any=raceCtx;if(!c)return;
+    const map=document.querySelector('.race-map.race-cinematic') as HTMLElement|null;if(!map)return;
+    map.classList.add('race-v16','pixi-race-map-v17');
+    map.innerHTML='<div id="pixi-race-host-v17" class="pixi-race-host-v17" aria-label="2.5D трасса WebGL"></div>'+ 
+      '<div class="pixi-race-overlay-v17"><span id="pixi-lane-label-v17">SIDE · '+(c.chase||c.isPolice?'CHASE':'DRAG')+'</span><b id="pixi-speed-label-v17">0 КМ/Ч</b></div>'+ 
+      '<div class="cine-hud-bar hud-v16 pixi-hud-v17"><div class="cine-distance-row-v16"><span id="cine-progress-label">ВЫ · 0 м</span><span id="cine-gap-label">СТАРТ</span></div><div class="cine-progress"><i id="cine-progress-fill"></i></div><div class="chase-meter-v16" id="chase-meter-v16"><i id="chase-meter-fill-v16"></i></div></div>';
+    const up=document.getElementById('shift-btn');
+    if(up){up.classList.add('shift-up-v17');up.querySelector('.shift-face')!.textContent='+';const small=up.querySelector('small');if(small)small.textContent='ПЕРЕДАЧА +';if(!document.getElementById('shift-down-v17')){const down=document.createElement('button');down.id='shift-down-v17';down.className='race-control shift shift-down-v17';down.innerHTML='<span class="shift-face">−</span><small>ПЕРЕДАЧА −</small>';down.onclick=()=>manualShiftDownV17();up.before(down);}}
+    mountPixiRaceV17(c);
+  };
+  (window as any).showRaceCockpit=showRaceCockpit;
+
+  const hudV17=updateRaceHUD;
+  updateRaceHUD=function(){
+    hudV17();const c:any=raceCtx;if(!c)return;
+    const speed=document.getElementById('pixi-speed-label-v17');if(speed)speed.textContent=Math.round(Number(c.speed)||0)+' КМ/Ч · '+Math.max(1,Number(c.gear)||1)+' ПЕР.';
+    if(pixiRaceV17){try{pixiRaceV17.update({playerDistance:Number(c.distance)||0,speedKmh:Number(c.speed)||0,racers:raceDistancesV17(c),trackLength:Math.max(1,Number(c.trackLength)||402)});}catch(_){} }
+  };
+  (window as any).updateRaceHUD=updateRaceHUD;
+
+  const finishV17=finishRace;
+  finishRace=function(playerWins:any,cArg:any){destroyPixiRaceV17();return finishV17(playerWins,cArg);};
+  (window as any).finishRace=finishRace;
+
+  const switchTabV17=switchTab;
+  switchTab=function(tab:any){if(tab!=='race')destroyPixiRaceV17();return switchTabV17(tab);};
+  (window as any).switchTab=switchTab;
+
+  function openVisualAtelierV17(carId:any){
+    const id=Number(carId)||Number(state.activeCarId)||1,car=carsDB.find((x:any)=>Number(x.id)===id);if(!car||!state.ownedCars.includes(id)){showToast('Сначала добавь машину в гараж');return;}
+    window.dispatchEvent(new CustomEvent('autosyndicate:open-atelier',{detail:{carId:id,carName:car.name,config:visualConfigForCar(id)}}));
+  }
+  (window as any).openVisualAtelierV17=openVisualAtelierV17;
+
+  function injectAtelierButtonsV17(){
+    document.querySelectorAll('#garage-list .garage-card-v151').forEach((card:any)=>{
+      if(card.querySelector('.atelier-launch-v17'))return;const id=Number(card.dataset.carId)||0;if(!id)return;
+      const actions=card.querySelector('.garage-actions-v151')||card.querySelector('.carousel-actions');if(!actions)return;
+      const b=document.createElement('button');b.className='btn btn-gold atelier-launch-v17';b.type='button';b.textContent='ТЮНИНГ-АТЕЛЬЕ';b.onclick=(ev)=>{ev.stopPropagation();openVisualAtelierV17(id);};actions.appendChild(b);
+    });
+  }
+  const garageV17=renderGarage;
+  renderGarage=function(){garageV17();injectAtelierButtonsV17();};
+  (window as any).renderGarage=renderGarage;
+
+  const detailV17=openDetail;
+  openDetail=function(carId:any){
+    detailV17(carId);const id=Number(carId)||0;if(!state.ownedCars.includes(id))return;
+    const root=document.getElementById('detail-content');if(root&&!root.querySelector('.atelier-detail-launch-v17')){
+      const b=document.createElement('button');b.className='btn btn-gold atelier-detail-launch-v17';b.textContent='ТЮНИНГ-АТЕЛЬЕ · ВНЕШНИЙ ВИД';b.onclick=()=>openVisualAtelierV17(id);root.appendChild(b);
+    }
+  };
+  (window as any).openDetail=openDetail;
+
+  window.addEventListener('autosyndicate:visual-save',(event:any)=>{
+    const id=Number(event?.detail?.carId)||0;if(!id||!state.ownedCars.includes(id))return;
+    setVisualConfigForCar(id,event.detail.config);saveState();updateHeader();
+    try{void syncPlayerProfile(true);}catch(_){}
+    if(document.getElementById('screen-garage')?.classList.contains('active'))renderGarage();
+    if(document.getElementById('screen-profile')?.classList.contains('active'))renderProfile();
+    showToast('ВНЕШНИЙ ВИД СОХРАНЁН');haptic('success');
+  });
+
+  injectAtelierButtonsV17();
 })();

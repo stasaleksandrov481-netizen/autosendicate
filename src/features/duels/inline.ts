@@ -9,16 +9,10 @@ function playerId(id: number) { return `tg_${id}`; }
 function safe(value: string) { return value.replace(/[&<>]/g, (m) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;' }[m]!)); }
 function username(user: TgUser) { return user.username ? `@${user.username}` : user.first_name || `tg_${user.id}`; }
 function makeCode() { return randomBytes(12).toString('base64url'); }
-function publicImage(path: string | null | undefined) {
-  if (!path) return null;
-  const env = getServerEnv();
-  try { return new URL(path, `${env.NEXT_PUBLIC_APP_URL.replace(/\/$/,'')}/`).toString(); } catch { return null; }
-}
-
 async function currentCar(telegramId: number) {
   const s = createServerSupabase();
   const profile = await s.from('player_profiles')
-    .select('id,name,telegram_username,active_car_id,owned_cars,active_plate')
+    .select('id,name,telegram_username,active_car_id,owned_cars,active_plate,car_visuals')
     .eq('id', playerId(telegramId)).maybeSingle();
   if (profile.error) throw profile.error;
   if (!profile.data) return null;
@@ -26,7 +20,7 @@ async function currentCar(telegramId: number) {
   const active = Number(profile.data.active_car_id);
   if (!active || !owned.includes(active)) return null;
   const car = await s.from('game_cars_v11')
-    .select('id,name,image_path,power,tier,category')
+    .select('id,name,power,tier,category')
     .eq('id', active).eq('active', true).maybeSingle();
   if (car.error) throw car.error;
   if (!car.data) return null;
@@ -39,11 +33,8 @@ export async function handleInlineDuelQuery(query: TgInlineQuery) {
     await answerTelegramInlineQuery(query.id, [], { cacheTime: 0 });
     return;
   }
-  const image = publicImage(selected.car.image_path);
-  if (!image) {
-    await answerTelegramInlineQuery(query.id, [], { cacheTime: 0 });
-    return;
-  }
+  const env=getServerEnv();
+  const image = new URL(`/api/car-visual/${encodeURIComponent(selected.profile.id)}?carId=${selected.car.id}`, `${env.NEXT_PUBLIC_APP_URL.replace(/\/$/,'')}/`).toString();
   const plate = selected.plate && typeof selected.plate === 'object' ? String((selected.plate as any).text ?? '') : '';
   const plateLine = plate ? `\n🔖 ${safe(plate)}` : '';
   const result: TelegramInlinePhotoResult = {

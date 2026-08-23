@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { carVisualConfigSchema } from '@/features/car-visual/schema';
 
 const upgradeSchema = z.object({
   engine: z.number().int().min(0).max(5),
@@ -24,6 +25,7 @@ export const vehicleDataSchema = z.object({
   effectivePower: z.number().int().min(0).max(10000).optional(),
   tuningValue: z.number().int().min(0).max(50_000_000).optional(),
   buildRating: z.number().int().min(0).max(100).optional(),
+  visualConfig: carVisualConfigSchema.optional(),
   version: z.number().int().min(1).max(10).optional()
 }).strict();
 
